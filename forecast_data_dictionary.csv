@@ -1,0 +1,27 @@
+column_name,description,is_calculated,formula_or_logic,notes
+Programme_ID,Programme identifier,No,,Categorical ID
+Commodity,Spend category or commodity type,No,,Categorical
+Supplier_ID,Supplier identifier,No,,Categorical ID used for joins
+Forecast_Period,Forecasted period in YYYY-MM,No,,Period label
+Forecast_Version_Date,Date this forecast revision was created,No,,Timestamp of revision
+Forecast_Spend,Forecasted spend amount for the period,No,,Currency amount
+Actual_Spend,Actual realized spend amount for the period,No,,Currency amount
+Variance,Signed forecast error,Yes,Actual_Spend - Forecast_Spend,Negative means forecast was above actual
+Absolute_Error,Absolute forecast error magnitude,Yes,abs(Variance),Non-negative error magnitude
+Forecast_Failed_Flag,Binary failure indicator,Yes (inferred),1 when Absolute_Error / Actual_Spend > approx 0.176 else 0,Threshold inferred from dataset behavior
+Forecast_Period_End_Date,End date of the forecast period,Likely upstream derived,,Used with version date to compute lead time
+Revision_Number,Revision sequence number for the same event,Likely upstream derived,,Starts at 1 and increments by update
+Previous_Forecast_Spend,Prior revision forecast spend for the same event,Yes (series-derived),Lag of Forecast_Spend within event order,Null for first revision
+Forecast_Change,Revision-to-revision forecast delta,Yes,Forecast_Spend - Previous_Forecast_Spend,Null for first revision
+Forecast_Change_Direction,Direction of forecast change,Yes,UP if Forecast_Change > 0; DOWN if Forecast_Change < 0; FLAT if 0,Matches sign of Forecast_Change
+Forecast_Stability_Score,Relative change magnitude between revisions,Yes,abs(Forecast_Change) / Forecast_Spend,Higher means less stable
+Days_Before_Period,Lead time from forecast version to period end,Yes,(Forecast_Period_End_Date - Forecast_Version_Date).days,Exact match in data
+Confidence_Band,Confidence category for forecast,No/Upstream,,Values like Low/Medium/High
+Committed_Spend,Committed spend amount at forecast time,No,,Currency amount
+Commitment_Ratio,Commitment level relative to forecast,Approx. derived,Committed_Spend / Forecast_Spend,Strong fit but minor per-row noise/rounding
+PO_Count,Purchase order count linked to forecast item,No/Upstream aggregate,,Integer count
+Actual_Minus_Committed,Difference between actual and committed spend,Yes,Actual_Spend - Committed_Spend,Signed amount
+Programme_Change_Count,Count of programme changes,No/Upstream aggregate,,Integer count
+Programme_Scope_Churn_Index,Programme scope volatility index,No/Upstream metric,,Continuous index
+Programme_Change_Impact_Index,Programme change impact index,No/Upstream metric,,Continuous index
+

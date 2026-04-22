@@ -133,6 +133,12 @@ def main() -> None:
     parser.add_argument("--train-frac", type=float, default=0.8)
     parser.add_argument("--threshold", type=float, default=0.5)
     parser.add_argument("--output", default="forecast_failure_scored.csv")
+    parser.add_argument(
+        "--feature-mode",
+        choices=["full", "stability-only"],
+        default="full",
+        help="Use all configured features (full) or only Forecast_Stability_Score (stability-only)",
+    )
 
     args = parser.parse_args()
 
@@ -147,10 +153,6 @@ def main() -> None:
         "Actual_Minus_Committed",
         "Forecast_Period_End_Date",
         "event_id",
-    }
-
-    excluded = {
-
     }
 
     candidate_features = [c for c in df.columns if c not in excluded]
@@ -194,8 +196,15 @@ def main() -> None:
         "New_Supplier_Flag_Num",
     ]
 
+    if args.feature_mode == "stability-only":
+        categorical_features = []
+        numeric_features = ["Forecast_Stability_Score"]
+
     categorical_features = [c for c in categorical_features if c in candidate_features]
     numeric_features = [c for c in numeric_features if c in candidate_features]
+
+    if not (categorical_features or numeric_features):
+        raise ValueError("No features available after filtering. Check --feature-mode and input columns.")
 
     train_df, test_df = split_by_event_time(df, train_frac=args.train_frac)
 
@@ -212,6 +221,7 @@ def main() -> None:
 
     print("\nEvaluation")
     print("----------")
+    print(f"Feature mode:      {args.feature_mode}")
     print(f"Train rows:        {len(train_df):,}")
     print(f"Test rows:         {len(test_df):,}")
     print(f"Features used:     {len(categorical_features) + len(numeric_features)}")

@@ -9,6 +9,7 @@ Train a logistic regression model for `Forecast_Failed_Flag` using forecast-time
 ```powershell
 python .\forecast_failure_model.py
 python .\forecast_failure_model.py --train-frac 0.8 --threshold 0.45 --output scored_with_supplier_features.csv
+python .\forecast_failure_model.py --feature-mode stability-only --output scored_stability_only.csv
 ```
 
 ## PCA Analysis
