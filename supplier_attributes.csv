@@ -1,0 +1,51 @@
+﻿Supplier_ID,Contract_Type,Strategic_Flag,New_Supplier_Flag,Supplier_Profile,Region,Payment_Terms,OTIF_Pct,Avg_Lead_Time_Days,Quality_Incidents_YTD
+SUP001,Fixed Price,Yes,Yes,Stable,EU,90 days,90.1,52,2
+SUP002,Framework,Yes,Yes,Stable,EU,90 days,87.4,24,0
+SUP003,Fixed Price,Yes,No,Chronic Fade,APAC,60 days,67.9,74,10
+SUP004,Framework,Yes,Yes,Chronic Fade,US,90 days,66.9,79,9
+SUP005,Fixed Price,Yes,No,Stable,UK,45 days,94.1,54,1
+SUP006,T&M,No,Yes,Volatile,APAC,60 days,86,85,4
+SUP007,T&M,No,No,Late Spender,APAC,45 days,89.2,37,1
+SUP008,T&M,Yes,Yes,Stable,UK,45 days,87.4,44,2
+SUP009,Fixed Price,No,No,Stable,US,30 days,91.3,29,2
+SUP010,Framework,Yes,No,Optimistic,UK,45 days,89.8,65,1
+SUP011,T&M,Yes,Yes,Optimistic,APAC,90 days,84.8,47,3
+SUP012,Framework,No,Yes,Stable,US,90 days,88.6,28,2
+SUP013,Cost Plus,No,Yes,Chronic Fade,UK,60 days,82.4,106,9
+SUP014,Fixed Price,Yes,Yes,Volatile,APAC,90 days,83.3,65,2
+SUP015,Cost Plus,No,Yes,Stable,US,45 days,89.6,34,0
+SUP016,Fixed Price,No,No,Volatile,EU,60 days,85.8,80,6
+SUP017,Fixed Price,Yes,Yes,Optimistic,EU,90 days,88.1,31,4
+SUP018,Cost Plus,No,No,Optimistic,APAC,30 days,92.8,29,3
+SUP019,Cost Plus,No,No,Volatile,UK,90 days,82.3,54,1
+SUP020,Cost Plus,No,No,Chronic Fade,UK,60 days,74.6,103,9
+SUP021,T&M,No,Yes,Stable,US,60 days,91.4,52,2
+SUP022,Fixed Price,Yes,Yes,Volatile,UK,45 days,87.2,61,6
+SUP023,Fixed Price,No,No,Stable,EU,30 days,91,25,1
+SUP024,T&M,No,Yes,Optimistic,US,30 days,86.3,32,2
+SUP025,Framework,Yes,Yes,Volatile,US,60 days,70.4,81,7
+SUP026,T&M,Yes,No,Optimistic,APAC,60 days,83.3,55,0
+SUP027,Fixed Price,No,Yes,Optimistic,UK,60 days,80.8,28,0
+SUP028,Framework,Yes,Yes,Stable,EU,60 days,93.9,42,0
+SUP029,T&M,No,No,Stable,US,45 days,90.7,52,1
+SUP030,T&M,No,No,Optimistic,EU,90 days,81.6,60,2
+SUP031,Framework,Yes,Yes,Stable,US,60 days,93,20,1
+SUP032,Framework,No,No,Chronic Fade,APAC,90 days,75.1,73,6
+SUP033,Fixed Price,Yes,No,Optimistic,UK,60 days,81.7,41,3
+SUP034,Framework,No,No,Stable,US,60 days,86.5,33,2
+SUP035,Cost Plus,Yes,No,Optimistic,UK,30 days,84.4,62,1
+SUP036,Fixed Price,No,Yes,Volatile,APAC,60 days,84.2,59,5
+SUP037,Fixed Price,No,No,Stable,UK,30 days,89.7,30,1
+SUP038,Fixed Price,No,No,Late Spender,US,45 days,74.3,61,3
+SUP039,Fixed Price,Yes,Yes,Optimistic,UK,90 days,92.5,65,4
+SUP040,T&M,No,Yes,Optimistic,APAC,45 days,87.3,28,2
+SUP041,T&M,Yes,No,Volatile,UK,30 days,81.4,67,3
+SUP042,T&M,No,Yes,Stable,UK,30 days,91,22,1
+SUP043,Fixed Price,No,No,Optimistic,EU,60 days,87.5,49,4
+SUP044,Cost Plus,No,Yes,Stable,UK,45 days,95,22,2
+SUP045,Framework,Yes,Yes,Stable,US,30 days,89.6,28,1
+SUP046,Fixed Price,Yes,No,Stable,EU,90 days,86,24,0
+SUP047,Fixed Price,Yes,Yes,Stable,APAC,60 days,89.5,41,1
+SUP048,T&M,Yes,No,Chronic Fade,APAC,90 days,83.3,102,9
+SUP049,Cost Plus,No,Yes,Volatile,US,90 days,86.2,74,7
+SUP050,Cost Plus,Yes,No,Optimistic,APAC,30 days,80.4,53,2
