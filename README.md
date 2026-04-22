@@ -26,3 +26,16 @@ The script writes these files:
 - `*_loadings.csv`
 - `*_scores.csv`
 - `*_top_loadings.csv`
+
+## Plotly Upload Dashboard
+
+Upload either:
+- a scored CSV (must include `predicted_failure_probability`), or
+- a raw forecast CSV (the app auto-scores it before plotting).
+
+```powershell
+python .\plotly_upload_dashboard.py
+```
+
+By default, if no file is uploaded and `forecast_failure_scored.csv` exists in the project root, it is loaded automatically.
+
