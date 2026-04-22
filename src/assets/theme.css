@@ -1,0 +1,131 @@
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  color: #1f1b16;
+  background:
+    radial-gradient(circle at top left, rgba(13, 107, 104, 0.14), transparent 28%),
+    radial-gradient(circle at top right, rgba(163, 79, 45, 0.14), transparent 24%),
+    linear-gradient(180deg, #faf7f2 0%, #f3efe6 100%);
+}
+
+.page-shell {
+  width: min(1240px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 36px 0 56px;
+}
+
+.hero,
+.control-strip,
+.panel,
+.kpi-card {
+  border: 1px solid rgba(74, 63, 45, 0.14);
+  background: rgba(255, 251, 245, 0.88);
+  box-shadow: 0 18px 40px rgba(52, 38, 21, 0.08);
+}
+
+.hero {
+  padding: 28px 30px;
+  border-radius: 28px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: #0d6b68;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  line-height: 1;
+}
+
+.hero-copy {
+  max-width: 68ch;
+  margin: 16px 0 0;
+  color: #65594a;
+  line-height: 1.6;
+}
+
+.control-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-top: 18px;
+  padding: 18px;
+  border-radius: 24px;
+}
+
+.control-group label {
+  display: block;
+  margin-bottom: 8px;
+  color: #65594a;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.kpi-card {
+  padding: 18px;
+  border-radius: 20px;
+}
+
+.kpi-label {
+  display: block;
+  color: #65594a;
+  font-size: 0.84rem;
+}
+
+.kpi-value {
+  display: block;
+  margin-top: 10px;
+  font-size: 1.55rem;
+}
+
+.panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.panel {
+  padding: 18px;
+  border-radius: 24px;
+}
+
+.panel-wide {
+  grid-column: span 2;
+}
+
+.panel h2 {
+  margin: 0 0 14px;
+}
+
+@media (max-width: 720px) {
+  .page-shell {
+    width: min(100% - 20px, 1240px);
+    padding-top: 18px;
+  }
+
+  .hero,
+  .panel,
+  .control-strip,
+  .kpi-card {
+    border-radius: 20px;
+  }
+
+  .panel-wide {
+    grid-column: span 1;
+  }
+}
