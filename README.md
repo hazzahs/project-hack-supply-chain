@@ -39,7 +39,13 @@ After cloning the project to your local machine run
 
 ```bash
 docker compose up --build
+
+# OR
+
+podman compose up --build
 ```
+
+You will then be able to view the dashboard at `http:127.0.0.1:8050`
 
 ### Locally
 
