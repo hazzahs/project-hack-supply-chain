@@ -1,0 +1,22 @@
+{
+  "input": "C:\\my_files\\project_hack_27\\data\\forecast_data.csv",
+  "output_dir": "C:\\my_files\\project_hack_27\\outputs_variance",
+  "target_column": "Variance",
+  "selected_factor": "Days_Before_Period",
+  "selected_component": "PC1",
+  "metrics": {
+    "train_rows": 4801,
+    "test_rows": 1179,
+    "target_column": "Variance",
+    "feature_used": "Days_Before_Period",
+    "linear_intercept": -14242.982886395068,
+    "linear_coefficient": -4712.943130857998,
+    "mae": 492983.46972858347,
+    "rmse": 728511.3653980029,
+    "r2": -0.8443273490371088,
+    "threshold": 0.5,
+    "predicted_positive_rate": 0.0,
+    "is_binary_target": false,
+    "roc_auc": NaN
+  }
+}
