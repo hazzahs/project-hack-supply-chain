@@ -1,13 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "project-hack-supply-chain"
 version = "0.1.0"
-description = "Add your description here"
+description = "Forecast failure modelling and dashboard tooling for the supply-chain hack project"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 dependencies = [
     "pandas>=3.0.2",
     "numpy>=2.0.0",
     "scikit-learn>=1.5.0",
     "plotly>=5.24.0",
     "dash>=2.18.0",
+    "python-dotenv>=1.0.1",
 ]
+
+[project.scripts]
+project-hack-supply-chain = "project_hack_supply_chain.main:main"
+forecast-failure-model = "project_hack_supply_chain.forecast_failure:main"
+pca-analysis = "project_hack_supply_chain.pca:main"
+pca-linear-workflow = "project_hack_supply_chain.workflow:main"
+plotly-upload-dashboard = "project_hack_supply_chain.upload_dashboard:main"
+plotly-pca-linear-visuals = "project_hack_supply_chain.visuals:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

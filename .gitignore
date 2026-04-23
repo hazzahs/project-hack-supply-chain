@@ -1,4 +1,17 @@
-.\idea
+.idea/
+.codex
 .env
-Challenge 3 Rolls Royce.pdf
-\outputs
+.envrc.local
+.venv/
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+*.egg-info/
+.eggs/
+
+outputs/
+*.html
+
+.DS_Store

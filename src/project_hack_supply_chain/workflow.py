@@ -13,7 +13,8 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, r
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from pca_analysis import clean_data, get_numeric_features
+from .paths import DATA_DIR, OUTPUTS_DIR
+from .pca import clean_data, get_numeric_features
 
 
 DEFAULT_TARGET = "Forecast_Failed_Flag"
@@ -308,7 +309,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Run PCA to find the most influential factor, then train/test a linear model and save Plotly-ready outputs."
     )
-    parser.add_argument("--input", default="data/forecast_data.csv", help="Input forecast CSV")
+    parser.add_argument("--input", default=str(DATA_DIR / "forecast_data.csv"), help="Input forecast CSV")
     parser.add_argument("--n-components", default="0.95", help="PCA components (int) or variance target (float)")
     parser.add_argument("--train-frac", type=float, default=0.8, help="Train split by event chronology")
     parser.add_argument("--threshold", type=float, default=0.5, help="Classification threshold for derived flag")
@@ -317,7 +318,7 @@ def main() -> None:
         default=DEFAULT_TARGET,
         help="Column to predict with linear regression (default: Forecast_Failed_Flag)",
     )
-    parser.add_argument("--output-dir", default="outputs", help="Folder for workflow artifacts")
+    parser.add_argument("--output-dir", default=str(OUTPUTS_DIR), help="Folder for workflow artifacts")
 
     args = parser.parse_args()
 
