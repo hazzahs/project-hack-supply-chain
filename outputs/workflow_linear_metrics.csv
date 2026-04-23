@@ -1,2 +1,0 @@
-train_rows,test_rows,target_column,feature_used,linear_intercept,linear_coefficient,mae,rmse,r2,threshold,predicted_positive_rate,is_binary_target,roc_auc
-4801,1179,Forecast_Failed_Flag,Days_Before_Period,0.17517436453406654,0.004832321206139858,0.3500259416360485,0.4118677234694588,0.2603060571246364,0.5,0.6624257845631891,True,0.8086987891335716
