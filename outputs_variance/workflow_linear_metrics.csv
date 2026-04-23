@@ -1,2 +1,0 @@
-train_rows,test_rows,target_column,feature_used,linear_intercept,linear_coefficient,mae,rmse,r2,threshold,predicted_positive_rate,is_binary_target,roc_auc
-4801,1179,Variance,Days_Before_Period,-14242.982886395068,-4712.943130857998,492983.46972858347,728511.3653980029,-0.8443273490371088,0.5,0.0,False,
