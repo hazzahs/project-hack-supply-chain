@@ -11,16 +11,19 @@
   - [2.3 Persona-Based Views and Visual Outputs](#23-persona-based-views-and-visual-outputs)
   - [2.4 Interactive Filtering Layer](#24-interactive-filtering-layer)
   - [2.5 Technical Diagnostics Modal](#25-technical-diagnostics-modal)
-  - [2.6 CSV Export and Persistence](#26-csv-export-and-persistence)
+  - [2.6 External Prompt Files and Narrative Generation](#26-external-prompt-files-and-narrative-generation)
+  - [2.7 CSV Export and Persistence](#27-csv-export-and-persistence)
 
 ## 1. Technology Behind the Program
 
 The program combines feature engineering, dimensionality reduction, and supervised learning into a forecast-risk analysis workflow. The core implementation spans:
 
+- `main.py` as the unified entrypoint for workflows and dashboards.
 - `pca_analysis.py` for data cleaning and PCA feature processing.
 - `pca_linear_workflow.py` for end-to-end PCA factor selection + linear model training/testing.
 - `forecast_failure_model.py` for a logistic-regression alternative using categorical and numeric features.
 - `plotly_pca_linear_upload_dashboard.py` for interactive business-facing analytics and controls.
+- `prompts/` for external persona system prompts used by AI-generated summaries.
 
 At a high level, the system is designed to:
 
@@ -29,6 +32,7 @@ At a high level, the system is designed to:
 3. Identify the most influential business factor from PCA loadings.
 4. Train/test a model that predicts risk likelihood.
 5. Present decision-ready outputs in a multi-view Dash interface.
+6. Load persona-specific summary instructions from external prompt files so narrative behaviour can be updated without editing Python source.
 
 ### 1a. Workflow Flowchart
 
@@ -48,6 +52,7 @@ flowchart TD
 ```
 
 Key workflow functions:
+- `main()` in `main.py` for unified command routing.
 - `run_workflow(...)` in `plotly_pca_linear_upload_dashboard.py`
 - `find_influential_factor(...)` in `pca_linear_workflow.py`
 - `train_test_linear(...)` in `pca_linear_workflow.py`
@@ -107,6 +112,8 @@ Additional technical techniques used:
 
 The main production UI is implemented in `plotly_pca_linear_upload_dashboard.py` using Dash + Plotly. It is structured as a callback-driven application with persisted client-side state (`dcc.Store`).
 
+The application is launched through the unified CLI in `main.py`, while the dashboard itself orchestrates modelling, filtering, and persona-specific rendering inside `build_graphs(...)`.
+
 ### 2.1 Data Ingestion and Preparation
 
 The dashboard supports:
@@ -141,11 +148,17 @@ When the user clicks **Run workflow**, callback `run_model(...)`:
 The central visuals are grouped into business personas via `dcc.Tabs`:
 
 - **Programme Director**: headline KPIs, next-period outlook, top business drivers, recommendations.
-- **Commercial Manager**: supplier/contract/profile risk comparisons and watchlist.
-- **CFO**: risk-adjusted spend, concentration across programmes, financial exposure visuals.
-- **Project Controls Lead**: trend diagnostics, process-stability indicators, operational risk hotspots.
+- **Commercial Manager**: supplier/contract/profile risk comparisons, a region-by-contract interaction heatmap, and a supplier watchlist that now shows the top 5 highest-risk and top 5 lowest-risk suppliers.
+- **CFO**: risk-adjusted spend, concentration across programmes, and a spend-versus-failed-proposal chart with a best-fit trendline plus narrative annotation to help explain the relationship.
+- **Project Controls Lead**: trend diagnostics, process-stability indicators, and top risk-driver explanations.
 
 Visuals are generated in `build_graphs(...)`, with chart-specific helper functions for bar charts, heatmaps, trend lines, and risk summaries.
+
+Notable current dashboard behaviour:
+
+- The previous supplier-region risk-pair chart has been removed because it did not materially extend the insight already provided elsewhere.
+- Persona AI summaries load instructions from external prompt files in `prompts/`, one file per persona.
+- Recommendation prompts remain target-aware and are stored under `prompts/` as well.
 
 ### 2.4 Interactive Filtering Layer
 
@@ -169,7 +182,24 @@ To keep executive UX clean while preserving transparency for technical teams:
 
 This creates a business-first experience while keeping implementation details accessible on demand.
 
-### 2.6 CSV Export and Persistence
+### 2.6 External Prompt Files and Narrative Generation
+
+Persona summaries are driven by external prompt files under `prompts/`:
+
+- `system_prompt_persona_programme_director.txt`
+- `system_prompt_persona_commercial_manager.txt`
+- `system_prompt_persona_cfo.txt`
+- `system_prompt_persona_project_controls.txt`
+
+These prompts position the AI component as a data analyst for the relevant persona and instruct it to explain:
+
+- what is going well,
+- what is not going well, and
+- what actions are needed to stay on track.
+
+This design makes prompt tuning operationally simpler because summary behaviour can be adjusted without changing the dashboard code.
+
+### 2.7 CSV Export and Persistence
 
 The dashboard supports download of the latest prediction table:
 
