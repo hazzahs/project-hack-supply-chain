@@ -1,10 +1,7 @@
 import base64
-import contextlib
 import io
 import json
 import os
-import sys
-import threading
 from pathlib import Path
 
 import dash
@@ -16,6 +13,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 from .forecast_failure import extract_days_from_terms
+from .llm import call_llm, get_llm_model, get_llm_provider, llm_is_configured, log_llm_configuration_warning
 from .paths import ASSETS_DIR, DATA_DIR, PROMPTS_DIR
 from .pca import get_numeric_features
 from .workflow import (
@@ -26,40 +24,9 @@ from .workflow import (
     train_test_linear,
 )
 
-GEN_AI_ROOT = Path(r"C:\my_files\source_code\gen-ai")
-sys.path.insert(0, str(GEN_AI_ROOT))
-original_cwd = Path.cwd()
-_GENAI_CWD_LOCK = threading.Lock()
-try:
-    os.chdir(GEN_AI_ROOT)
-    from common.llm_utils import make_LLM_call  # type: ignore[import-not-found]
-    from common.m2m_access_token import get_access_token  # type: ignore[import-not-found]
-    LLM_AVAILABLE = True
-except Exception as exc:
-    LLM_AVAILABLE = False
-    print(f"Warning: LLM utilities not available ({exc}). Recommendations will be generated from heuristics.")
-finally:
-    try:
-        os.chdir(original_cwd)
-    except Exception:
-        pass
-
-
-@contextlib.contextmanager
-def with_genai_cwd():
-    """Temporarily switch cwd so external gen-ai utilities can resolve relative paths."""
-    with _GENAI_CWD_LOCK:
-        current = Path.cwd()
-        try:
-            os.chdir(GEN_AI_ROOT)
-            yield
-        finally:
-            os.chdir(current)
-
 
 DEFAULT_INPUT_PATH = DATA_DIR / "forecast_data.csv"
 DEFAULT_SUPPLIER_PATH = DATA_DIR / "supplier_attributes.csv"
-GAIA_CRED_PATH = Path(r"C:\my_files\source_code\gen-ai\copilot_ignore\gaia_api_key.yaml")
 PROMPTS_DIR.mkdir(exist_ok=True)
 FIXED_N_COMPONENTS = "0.95"
 FILTER_DEFAULT_MIN_RISK = 0.0
@@ -1135,55 +1102,6 @@ def run_workflow(df: pd.DataFrame, target_col: str, n_components: str, train_fra
         "metrics": metrics,
     }
 
-
-def get_llm_access_token() -> str | None:
-    if not LLM_AVAILABLE:
-        return None
-
-    def _read_yaml_value(path: Path, keys: list[str]) -> str | None:
-        if not path.exists():
-            return None
-
-        try:
-            lines = path.read_text(encoding="utf-8").splitlines()
-        except Exception:
-            return None
-
-        parsed: dict[str, str] = {}
-        for raw in lines:
-            line = raw.strip()
-            if not line or line.startswith("#") or ":" not in line:
-                continue
-            k, v = line.split(":", 1)
-            parsed[k.strip()] = v.strip().strip("\"'")
-
-        for key in keys:
-            value = parsed.get(key)
-            if value:
-                return value
-        return None
-
-    try:
-        from dotenv import load_dotenv
-        load_dotenv()
-        client_id = os.getenv("CLIENT_ID")
-        client_secret = os.getenv("CLIENT_SECRET")
-
-        # Fallback to gaia_api_key.yaml when env vars are not set.
-        if not client_id:
-            client_id = _read_yaml_value(GAIA_CRED_PATH, ["CLIENT_ID", "client_id"])
-        if not client_secret:
-            client_secret = _read_yaml_value(GAIA_CRED_PATH, ["CLIENT_SECRET", "client_secret"])
-
-        if not client_id or not client_secret:
-            return None
-        token = get_access_token(client_id, client_secret)
-        return token
-    except Exception as e:
-        print(f"Could not retrieve LLM access token: {e}")
-        return None
-
-
 _PERSONA_SYSTEM_PROMPT_FALLBACKS: dict[str, str] = {
     "programme_director": """You are a data analyst briefing a Programme Director on supply-chain forecast performance.
 Your role is to analyse the provided data and give a concise, honest narrative (3-5 sentences) covering:
@@ -1276,7 +1194,8 @@ def get_llm_persona_summary(
 
     Returns a narrative string, or None if LLM is unavailable or fails.
     """
-    if not LLM_AVAILABLE:
+    if not llm_is_configured():
+        log_llm_configuration_warning()
         return None
 
     system_prompt = load_persona_system_prompt(persona)
@@ -1284,9 +1203,8 @@ def get_llm_persona_summary(
         return None
 
     try:
-        access_token = get_llm_access_token()
-        if not access_token:
-            return None
+        provider = get_llm_provider()
+        model = get_llm_model()
 
         # Build a readable data context block from the dict
         context_lines = [f"Target metric being predicted: {target_col}", ""]
@@ -1301,20 +1219,17 @@ def get_llm_persona_summary(
         user_prompt = (
             "Here is the latest data for your analysis:\n\n"
             + "\n".join(context_lines)
-            + "\n\nPlease provide your analytical summary now."
+            + f"\n\nActive provider: {provider}\nActive model: {model}\n\n"
+            + "Please provide your analytical summary now."
         )
 
-        with with_genai_cwd():
-            response = make_LLM_call(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                access_token=access_token,
-                temp=0.7,
-                model="anthropic/claude-haiku-4-5",
-                enable_rag=False,
-                max_completion_tokens=400,
-            )
+        response = call_llm(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            max_output_tokens=400,
+        )
         if not response or not response.strip():
+            print(f"LLM returned empty persona summary for persona={persona} provider={provider} model={model}.")
             return None
         return response.strip()
     except Exception as e:
@@ -1329,37 +1244,34 @@ def get_llm_recommendations(
     metrics: dict,
 ) -> list[dict] | None:
     """Call LLM to generate up to 3 concise recommendations in table-ready structure."""
-    if not LLM_AVAILABLE:
+    if not llm_is_configured():
+        log_llm_configuration_warning()
         return None
 
     try:
-        access_token = get_llm_access_token()
-        if not access_token:
-            return None
-
         system_prompt_path = save_system_prompt(target_col)
         system_prompt = system_prompt_path.read_text(encoding="utf-8")
+        provider = get_llm_provider()
+        model = get_llm_model()
 
         user_prompt = f"""Business context:
 - target metric: {target_col}
 - average predicted value: {avg_risk:.3f}
 - top influencing factors: {', '.join(top_factors[:5])}
 - key driver from model: {metrics.get('feature_used', 'N/A')}
+- active provider: {provider}
+- active model: {model}
 
 Provide a maximum of 3 high-impact improvements for business leaders.
 Return JSON only."""
 
-        with with_genai_cwd():
-            response = make_LLM_call(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                access_token=access_token,
-                temp=1.0,
-                model="anthropic/claude-haiku-4-5",
-                enable_rag=False,
-                max_completion_tokens=1000,
-            )
+        response = call_llm(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            max_output_tokens=1000,
+        )
         if not response:
+            print(f"LLM returned empty response for provider={provider} model={model}.")
             return None
 
         parsed: list[dict] = []
@@ -1386,6 +1298,7 @@ Return JSON only."""
                         }
                     )
         except Exception:
+            print(f"LLM response was not valid JSON for provider={provider} model={model}: {raw[:300]}")
             return None
 
         return parsed[:3] if parsed else None
@@ -3061,6 +2974,10 @@ def load_dataset(contents, filename):
     State("train-frac", "value"),
     State("threshold", "value"),
     prevent_initial_call=True,
+    running=[
+        (Output("run-button", "disabled"), True, False),
+        (Output("run-button", "children"), "Running workflow...", "Run workflow"),
+    ],
 )
 def run_model(
     n_clicks,
