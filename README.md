@@ -6,17 +6,17 @@ Forecast-risk analytics project with PCA-driven feature selection, logistic and 
 
 Key files and folders in the current repository layout:
 
-- `main.py` — unified command-line entrypoint for workflows and dashboards.
-- `forecast_failure_model.py` — logistic regression workflow for forecast failure classification.
-- `pca_analysis.py` — PCA analysis workflow and export utilities.
-- `pca_linear_workflow.py` — PCA-to-linear workflow that selects one influential factor and scores risk.
-- `plotly_pca_linear_upload_dashboard.py` — main multi-persona dashboard.
-- `plotly_upload_dashboard.py` — scored/raw upload dashboard.
-- `plotly_pca_linear_visuals.py` — standalone Plotly report builder for saved workflow outputs.
-- `data/` — source CSV data files.
-- `assets/` — dashboard styling and optional static assets.
-- `outputs/` and `outputs_variance/` — generated workflow artefacts.
-- `prompts/` — system prompt files used for AI-generated summaries and recommendations.
+- `main.py` - unified command-line entrypoint for workflows and dashboards.
+- `forecast_failure_model.py` - logistic regression workflow for forecast failure classification.
+- `pca_analysis.py` - PCA analysis workflow and export utilities.
+- `pca_linear_workflow.py` - PCA-to-linear workflow that selects one influential factor and scores risk.
+- `plotly_pca_linear_upload_dashboard.py` - main multi-persona dashboard.
+- `plotly_upload_dashboard.py` - scored/raw upload dashboard.
+- `plotly_pca_linear_visuals.py` - standalone Plotly report builder for saved workflow outputs.
+- `data/` - source CSV data files.
+- `assets/` - dashboard styling and optional static assets.
+- `outputs/` and `outputs_variance/` - generated workflow artefacts.
+- `prompts/` - system prompt files used for AI-generated summaries and recommendations.
 
 Persona prompt files currently stored under `prompts/`:
 
