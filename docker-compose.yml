@@ -1,0 +1,18 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: project-hack-supply-chain
+    ports:
+      - "8050:8050"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8050
+
+      # LLM config
+      # Set these in a .env file or export them in your shell
+      LLM_PROVIDER: ${LLM_PROVIDER:-claude}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      API_KEY: ${API_KEY:-}
+    restart: unless-stopped
