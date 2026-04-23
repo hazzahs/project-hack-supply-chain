@@ -635,9 +635,12 @@ def build_persona_summary_card(summary_text: str, accent: str = "#c7d2fe", backg
             html.H4("AI Summary", style={"margin": "0 0 8px 0"}),
             html.P(summary_text, style={"margin": 0, "lineHeight": "1.45"}),
         ],
+        className="persona-summary-card",
         style={
-            "backgroundColor": background,
-            "border": f"1px solid {accent}",
+            "--card-accent": accent,
+            "--card-background": background,
+            "backgroundColor": "var(--card-background)",
+            "border": "1px solid var(--card-accent)",
             "borderRadius": "10px",
             "padding": "14px",
             "marginBottom": "14px",
@@ -1159,6 +1162,87 @@ def load_persona_system_prompt(persona: str) -> str | None:
     return _PERSONA_SYSTEM_PROMPT_FALLBACKS.get(persona)
 
 
+def get_theme_tokens(theme: str) -> dict[str, str]:
+    if theme == "dark":
+        return {
+            "plot_bg": "#13233a",
+            "paper_bg": "#0f1b2d",
+            "font": "#e5edf7",
+            "muted": "#a9b7ca",
+            "grid": "#24364f",
+            "zero": "#37506f",
+            "annotation_bg": "#102746",
+            "annotation_border": "#37506f",
+            "summary_bg": "#1a1635",
+            "summary_border": "#4c1d95",
+        }
+    return {
+        "plot_bg": "#f8fafc",
+        "paper_bg": "#ffffff",
+        "font": "#1f2937",
+        "muted": "#4b5563",
+        "grid": "#e2e8f0",
+        "zero": "#cbd5e1",
+        "annotation_bg": "#f1f5f9",
+        "annotation_border": "#94a3b8",
+        "summary_bg": "#f3e8ff",
+        "summary_border": "#e9d5ff",
+    }
+
+
+def apply_theme_to_figure(fig: go.Figure | None, theme: str) -> go.Figure | None:
+    if fig is None:
+        return None
+
+    colors = get_theme_tokens(theme)
+    fig.update_layout(
+        paper_bgcolor=colors["paper_bg"],
+        plot_bgcolor=colors["plot_bg"],
+        font={"color": colors["font"]},
+        title_font={"color": colors["font"]},
+        legend={"font": {"color": colors["font"]}},
+    )
+    fig.update_xaxes(
+        gridcolor=colors["grid"],
+        linecolor=colors["zero"],
+        tickfont={"color": colors["font"]},
+        title_font={"color": colors["font"]},
+        zerolinecolor=colors["zero"],
+    )
+    fig.update_yaxes(
+        gridcolor=colors["grid"],
+        linecolor=colors["zero"],
+        tickfont={"color": colors["font"]},
+        title_font={"color": colors["font"]},
+        zerolinecolor=colors["zero"],
+    )
+
+    annotations = list(fig.layout.annotations) if fig.layout.annotations else []
+    for annotation in annotations:
+        annotation.font = {**(annotation.font.to_plotly_json() if annotation.font else {}), "color": colors["font"]}
+        if getattr(annotation, "bgcolor", None) in {None, "#f1f5f9", "rgba(255,255,255,0.88)"}:
+            annotation.bgcolor = colors["annotation_bg"]
+        if getattr(annotation, "bordercolor", None) in {None, "#94a3b8", "#cbd5e1"}:
+            annotation.bordercolor = colors["annotation_border"]
+    fig.update_layout(annotations=annotations)
+    return fig
+
+
+def apply_theme_to_component_tree(node: Component | list | tuple | str | None, theme: str):
+    if isinstance(node, dcc.Graph):
+        node.figure = apply_theme_to_figure(node.figure, theme)
+        return node
+
+    if isinstance(node, (list, tuple)):
+        return [apply_theme_to_component_tree(child, theme) for child in node]
+
+    if hasattr(node, "children"):
+        children = getattr(node, "children")
+        if children is not None:
+            setattr(node, "children", apply_theme_to_component_tree(children, theme))
+    return node
+
+
 def save_system_prompt(target_col: str) -> Path:
     """Save the recommendations system prompt to a file (used for the recommendations table)."""
     prompt_content = _RECOMMENDATIONS_SYSTEM_PROMPT.format(target_col=target_col)
@@ -1315,6 +1399,7 @@ def build_graphs(
     selected_contract_type: str | None,
     selected_supplier_profile: str | None,
     min_risk_filter: float,
+    theme: str = "light",
 ) -> list:
     explained_df = result["explained_df"]
     loadings_df = result["loadings_df"]
@@ -1325,11 +1410,13 @@ def build_graphs(
     selected_component = selected_info["selected_component"]
     selected_factor = selected_info["selected_factor"]
     _ = int(metrics.get("test_rows", len(predictions_df)))
+    theme_colors = get_theme_tokens(theme)
     card_style = {
-        "border": "1px solid #ddd",
+        "border": "1px solid var(--border)",
         "borderRadius": "8px",
         "padding": "10px",
-        "backgroundColor": "#fafafa",
+        "backgroundColor": "var(--surface-2)",
+        "color": "var(--text)",
     }
 
     top_factors = (
@@ -2295,30 +2382,33 @@ def build_graphs(
         supplier_delay_children,
         className=_get_alert_card_class(risk_alerts["supplier_delay_risk"]["status"]),
         style={
-            "border": "1px solid #ddd",
+            "border": "1px solid var(--border)",
             "borderRadius": "8px",
             "padding": "12px",
-            "backgroundColor": "#fafafa",
+            "backgroundColor": "var(--surface-2)",
+            "color": "var(--text)",
         }
     )
     cost_volatility_card = html.Div(
         cost_volatility_children,
         className=_get_alert_card_class(risk_alerts["cost_volatility"]["status"]),
         style={
-            "border": "1px solid #ddd",
+            "border": "1px solid var(--border)",
             "borderRadius": "8px",
             "padding": "12px",
-            "backgroundColor": "#fafafa",
+            "backgroundColor": "var(--surface-2)",
+            "color": "var(--text)",
         }
     )
     demand_spike_card = html.Div(
         demand_spike_children,
         className=_get_alert_card_class(risk_alerts["demand_spike"]["status"]),
         style={
-            "border": "1px solid #ddd",
+            "border": "1px solid var(--border)",
             "borderRadius": "8px",
             "padding": "12px",
-            "backgroundColor": "#fafafa",
+            "backgroundColor": "var(--surface-2)",
+            "color": "var(--text)",
         }
     )
     risk_alert_card_children: list[Component] = [supplier_delay_card, cost_volatility_card, demand_spike_card]
@@ -2446,11 +2536,11 @@ def build_graphs(
                 dcc.Graph(figure=top10_factors_fig),
             ],
             style={
-                "backgroundColor": "#f3e8ff",
+                "backgroundColor": theme_colors["summary_bg"],
                 "padding": "16px",
                 "borderRadius": "8px",
                 "marginBottom": "20px",
-                "border": "1px solid #e9d5ff",
+                "border": f"1px solid {theme_colors['summary_border']}",
             }
         ),
         action_items,
@@ -2657,16 +2747,20 @@ def build_graphs(
     graphs = [
         dcc.Tabs(
             [
-                dcc.Tab(label="Programme Director", className="tab-item", selected_className="tab-item--selected", children=programme_director_blocks),
-                dcc.Tab(label="Commercial Manager", className="tab-item", selected_className="tab-item--selected", children=commercial_manager_blocks),
-                dcc.Tab(label="CFO", className="tab-item", selected_className="tab-item--selected", children=cfo_blocks),
-                dcc.Tab(label="Project Controls Lead", className="tab-item", selected_className="tab-item--selected", children=project_controls_blocks),
+                dcc.Tab(label="Programme Director", value="programme-director", className="tab-item", selected_className="tab-item--selected", children=programme_director_blocks),
+                dcc.Tab(label="Commercial Manager", value="commercial-manager", className="tab-item", selected_className="tab-item--selected", children=commercial_manager_blocks),
+                dcc.Tab(label="CFO", value="cfo", className="tab-item", selected_className="tab-item--selected", children=cfo_blocks),
+                dcc.Tab(label="Project Controls Lead", value="project-controls", className="tab-item", selected_className="tab-item--selected", children=project_controls_blocks),
             ],
+            id="main-tabs",
+            value="programme-director",
+            persistence=True,
+            persistence_type="memory",
             className="main-tabs",
         )
     ]
 
-    return graphs
+    return apply_theme_to_component_tree(graphs, theme)
 
 
 app = dash.Dash(__name__, assets_folder=str(ASSETS_DIR))
@@ -2674,14 +2768,21 @@ app.title = "PCA Linear Forecast Dashboard"
 
 app.layout = html.Div(
     [
+        dcc.Store(id="theme-store", data="light", storage_type="local"),
         html.Div(
             [
-                html.Div("Forecast Intelligence", className="title-eyebrow"),
-                html.H2("PCA + Linear Regression Dashboard", className="title-main"),
-                html.P(
-                    "Upload a CSV, choose a target column, and generate executive, drill-down, and operations insights.",
-                    className="title-sub",
+                html.Div(
+                    [
+                        html.Div("Forecast Intelligence", className="title-eyebrow"),
+                        html.H2("PCA + Linear Regression Dashboard", className="title-main"),
+                        html.P(
+                            "Upload a CSV, choose a target column, and generate executive, drill-down, and operations insights.",
+                            className="title-sub",
+                        ),
+                    ],
+                    className="header-copy",
                 ),
+                html.Button("Dark mode", id="theme-toggle", n_clicks=0, className="btn btn-light theme-toggle"),
             ],
             className="header-card",
         ),
@@ -2730,6 +2831,7 @@ app.layout = html.Div(
                                             step=0.05,
                                             value=0.8,
                                             marks={0.5: "50%", 0.7: "70%", 0.8: "80%", 0.9: "90%"},
+                                            allow_direct_input=False,
                                         ),
                                     ],
                                     className="slider-block",
@@ -2744,6 +2846,7 @@ app.layout = html.Div(
                                             step=0.01,
                                             value=0.5,
                                             marks={0.1: "10%", 0.3: "30%", 0.5: "50%", 0.7: "70%", 0.9: "90%"},
+                                            allow_direct_input=False,
                                         ),
                                     ],
                                     className="slider-block",
@@ -2877,10 +2980,10 @@ app.layout = html.Div(
             style={
                 "display": "none",
                 "padding": "12px",
-                "backgroundColor": "#f8fafc",
+                "backgroundColor": "var(--surface-2)",
                 "borderRadius": "8px",
                 "marginBottom": "16px",
-                "border": "1px solid #e5e7eb",
+                "border": "1px solid var(--border)",
                 "gridTemplateColumns": "repeat(auto-fit, minmax(220px, 1fr))",
                 "gap": "12px",
                 "alignItems": "end",
@@ -2891,7 +2994,8 @@ app.layout = html.Div(
         dcc.Store(id="predictions-store"),
         dcc.Store(id="workflow-store"),
     ],
-    className="page-shell",
+    id="page-shell",
+    className="page-shell theme-light",
 )
 
 
@@ -2956,6 +3060,28 @@ def load_dataset(contents, filename):
 
 
 @app.callback(
+    Output("theme-store", "data"),
+    Input("theme-toggle", "n_clicks"),
+    State("theme-store", "data"),
+    prevent_initial_call=True,
+)
+def toggle_theme(n_clicks, current_theme):
+    _ = n_clicks
+    return "dark" if current_theme == "light" else "light"
+
+
+@app.callback(
+    Output("page-shell", "className"),
+    Output("theme-toggle", "children"),
+    Input("theme-store", "data"),
+)
+def apply_theme(theme):
+    if theme == "dark":
+        return "page-shell theme-dark", "Light mode"
+    return "page-shell theme-light", "Dark mode"
+
+
+@app.callback(
     Output("metrics", "children"),
     Output("graphs", "children"),
     Output("predictions-store", "data"),
@@ -2973,6 +3099,7 @@ def load_dataset(contents, filename):
     State("min-risk-filter", "value"),
     State("train-frac", "value"),
     State("threshold", "value"),
+    State("theme-store", "data"),
     prevent_initial_call=True,
     running=[
         (Output("run-button", "disabled"), True, False),
@@ -2990,6 +3117,7 @@ def run_model(
     min_risk_filter,
     train_frac,
     threshold,
+    theme,
 ):
     _ = n_clicks
     try:
@@ -3019,6 +3147,7 @@ def run_model(
             selected_contract_type=selected_contract_type,
             selected_supplier_profile=selected_supplier_profile,
             min_risk_filter=float(min_risk_filter if min_risk_filter is not None else FILTER_DEFAULT_MIN_RISK),
+            theme=theme or "light",
         )
         workflow_payload = serialize_workflow_result(result)
 
@@ -3030,10 +3159,10 @@ def run_model(
         filters_style = {
             "display": "grid",
             "padding": "12px",
-            "backgroundColor": "#f8fafc",
+            "backgroundColor": "var(--surface-2)",
             "borderRadius": "8px",
             "marginBottom": "16px",
-            "border": "1px solid #e5e7eb",
+            "border": "1px solid var(--border)",
             "gridTemplateColumns": "repeat(auto-fit, minmax(220px, 1fr))",
             "gap": "12px",
             "alignItems": "end",
@@ -3051,6 +3180,7 @@ def run_model(
     Input("contract-filter", "value"),
     Input("supplier-profile-filter", "value"),
     Input("min-risk-filter", "value"),
+    Input("theme-store", "data"),
     State("workflow-store", "data"),
     State("target-column", "value"),
     prevent_initial_call=True,
@@ -3061,6 +3191,7 @@ def refresh_graphs_for_programme(
     selected_contract_type,
     selected_supplier_profile,
     min_risk_filter,
+    theme,
     workflow_payload,
     target_col,
 ):
@@ -3077,6 +3208,7 @@ def refresh_graphs_for_programme(
         selected_contract_type=selected_contract_type,
         selected_supplier_profile=selected_supplier_profile,
         min_risk_filter=float(min_risk_filter if min_risk_filter is not None else FILTER_DEFAULT_MIN_RISK),
+        theme=theme or "light",
     )
 
 
