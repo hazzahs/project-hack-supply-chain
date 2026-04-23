@@ -64,7 +64,6 @@ GAIA_CRED_PATH = Path(r"C:\my_files\source_code\gen-ai\copilot_ignore\gaia_api_k
 PROMPTS_DIR.mkdir(exist_ok=True)
 FIXED_N_COMPONENTS = "0.95"
 FILTER_DEFAULT_MIN_RISK = 0.0
-FILTER_DEFAULT_SUPPLIER_TOPN = 25
 
 
 def decode_uploaded_csv(contents: str) -> pd.DataFrame:
@@ -803,22 +802,6 @@ def build_project_controls_summary(
         if not risk_series.empty:
             high_risk_share = float((risk_series >= 0.5).mean())
 
-    hotspot_text = ""
-    if {"Supplier_ID", "Region", "predicted_failure_likelihood_linear"}.issubset(programme_view.columns):
-        hotspot_df = programme_view.copy()
-        hotspot_df["predicted_failure_likelihood_linear"] = pd.to_numeric(hotspot_df["predicted_failure_likelihood_linear"], errors="coerce")
-        hotspot_df = hotspot_df.dropna(subset=["predicted_failure_likelihood_linear"])
-        if not hotspot_df.empty:
-            top_hotspot = (
-                hotspot_df.groupby(["Supplier_ID", "Region"], dropna=False)["predicted_failure_likelihood_linear"]
-                .mean()
-                .sort_values(ascending=False)
-                .head(1)
-            )
-            if not top_hotspot.empty:
-                supplier_id, region = top_hotspot.index[0]
-                hotspot_text = f" The main operational hotspot is supplier {supplier_id} in {region}."
-
     control_state = "control performance looks steady"
     if pd.notna(stability_score) and stability_score < 0.45:
         control_state = "control performance is under strain because the forecast is still being reworked too often"
@@ -842,7 +825,7 @@ def build_project_controls_summary(
     source_text = f" This view is anchored on the trend in {trend_source.replace('_', ' ').lower()}." if trend_source else ""
 
     return (
-        f"Overall, {control_state}; {trend_text}.{driver_text}{alert_text}{hotspot_text}{source_text} "
+        f"Overall, {control_state}; {trend_text}.{driver_text}{alert_text}{source_text} "
         f"For operations and controls teams, the priority is to reduce avoidable forecast churn and act early where supplier or delivery signals are starting to drift."
     ).strip()
 
@@ -899,8 +882,9 @@ def summarize_supplier_watchlist(
     df: pd.DataFrame,
     metric_col: str,
     *,
-    top_n: int = 10,
+    top_n: int = 5,
 ) -> pd.DataFrame:
+    """Return top_n highest-risk and top_n lowest-risk suppliers with a 'group' label column."""
     if "Supplier_ID" not in df.columns or metric_col not in df.columns:
         return pd.DataFrame()
 
@@ -920,7 +904,15 @@ def summarize_supplier_watchlist(
 
     summary = work.groupby("Supplier_ID", dropna=False).agg(**aggregations).reset_index()
     summary["avg_failed_proposal_probability_pct"] = summary["avg_failed_proposal_probability"] * 100
-    return summary.sort_values("avg_failed_proposal_probability", ascending=False).head(top_n)
+    sorted_all = summary.sort_values("avg_failed_proposal_probability", ascending=False)
+
+    high_risk = sorted_all.head(top_n).copy()
+    high_risk["watchlist_group"] = "⚠ Highest risk"
+
+    low_risk = sorted_all.tail(top_n).sort_values("avg_failed_proposal_probability", ascending=True).copy()
+    low_risk["watchlist_group"] = "✓ Lowest risk"
+
+    return pd.concat([high_risk, low_risk], ignore_index=True)
 
 
 def build_supplier_bar_chart(
@@ -976,9 +968,20 @@ def build_supplier_bar_chart(
         line_dash="dash",
         line_color="#475569",
         line_width=1.5,
-        annotation_text=f"Current average {avg_risk_pct:.1f}%",
-        annotation_position="top right",
-        annotation_font_color="#334155",
+    )
+    fig.add_annotation(
+        x=avg_risk_pct,
+        xref="x",
+        y=1.0,
+        yref="paper",
+        yanchor="bottom",
+        text=f"↓ Portfolio avg: {avg_risk_pct:.1f}%",
+        showarrow=False,
+        font={"size": 11, "color": "#334155"},
+        bgcolor="#f1f5f9",
+        bordercolor="#94a3b8",
+        borderwidth=1,
+        borderpad=3,
     )
     fig.update_layout(
         xaxis_title="Average failed proposal probability (%)",
@@ -987,7 +990,7 @@ def build_supplier_bar_chart(
         plot_bgcolor="#f8fafc",
         paper_bgcolor="#ffffff",
         font={"family": "Segoe UI, Arial, sans-serif", "size": 12, "color": "#1f2937"},
-        margin={"l": 10, "r": 50, "t": 60, "b": 50},
+        margin={"l": 10, "r": 50, "t": 80, "b": 50},
         title_font={"size": 18, "color": "#111827"},
         uniformtext={"minsize": 9, "mode": "hide"},
         xaxis={
@@ -1011,9 +1014,18 @@ def build_supplier_heatmap(
     col_order = matrix.mean(axis=0).sort_values(ascending=False).index.tolist()
     matrix = matrix.loc[row_order, col_order]
 
+    # Compute per-cell text colour: dark text on pale cells, white text on dark cells.
+    z_vals = matrix.values.astype(float)
+    z_min = float(np.nanmin(z_vals))
+    z_max = float(np.nanmax(z_vals))
+    z_range = z_max - z_min if z_max != z_min else 1.0
+    # Normalise each cell to [0, 1] and use a midpoint threshold of 0.45
+    norm = (z_vals - z_min) / z_range
+    text_colors = np.where(norm < 0.45, "#1f2937", "white")
+
     fig = go.Figure(
         data=go.Heatmap(
-            z=matrix.values,
+            z=z_vals,
             x=matrix.columns.tolist(),
             y=matrix.index.tolist(),
             colorscale=[
@@ -1032,7 +1044,28 @@ def build_supplier_heatmap(
             ygap=6,
         )
     )
-    fig.update_traces(text=np.round(matrix.values, 1), texttemplate="%{text:.1f}%", textfont={"color": "white", "size": 12})
+    # Build per-cell text labels and apply individual font colours via annotations
+    fig.update_traces(text=np.round(z_vals, 1), texttemplate="%{text:.1f}%", textfont={"color": "rgba(0,0,0,0)", "size": 12})
+    rows = matrix.index.tolist()
+    cols = matrix.columns.tolist()
+    annotations = []
+    for r_idx, row_label in enumerate(rows):
+        for c_idx, col_label in enumerate(cols):
+            val = z_vals[r_idx, c_idx]
+            if np.isnan(val):
+                continue
+            annotations.append(
+                dict(
+                    x=col_label,
+                    y=row_label,
+                    text=f"{val:.1f}%",
+                    showarrow=False,
+                    font={"size": 12, "color": text_colors[r_idx, c_idx]},
+                    xref="x",
+                    yref="y",
+                )
+            )
+    fig.update_layout(annotations=annotations)
     fig.update_layout(
         title=title,
         plot_bgcolor="#f8fafc",
@@ -1152,9 +1185,72 @@ def get_llm_access_token() -> str | None:
         return None
 
 
-def generate_system_prompt(target_col: str) -> str:
-    """Generate a concise business-focused system prompt for recommendation generation."""
-    return f"""You are a senior business advisor for supply-chain forecasting.
+_PERSONA_SYSTEM_PROMPT_FALLBACKS: dict[str, str] = {
+    "programme_director": """You are a data analyst briefing a Programme Director on supply-chain forecast performance.
+Your role is to analyse the provided data and give a concise, honest narrative (3-5 sentences) covering:
+1. What is going well — metrics, trends, or areas of strength.
+2. What is not going well — areas of risk, missed targets, or deteriorating signals.
+3. What changes or actions are needed to keep the programme on track.
+Write in plain business English. Avoid technical jargon. Do not use bullet points — write in flowing prose.
+Do not repeat the raw numbers verbatim; interpret what they mean for the programme.""",
+
+    "commercial_manager": """You are a data analyst briefing a Commercial Manager on supplier and contract risk.
+Your role is to analyse the provided supplier, contract, commodity and regional data and give a concise narrative (3-5 sentences) covering:
+1. Which commercial relationships or contract structures are performing well.
+2. Where supplier or commercial risk is elevated and needs attention.
+3. What commercial actions should be taken to reduce forecast failure risk.
+Write in plain business English. Be direct. Do not use bullet points — write in flowing prose.
+Do not repeat the raw numbers verbatim; interpret what they mean for procurement and contracts.""",
+
+    "cfo": """You are a data analyst briefing a CFO on financial exposure from forecast failures.
+Your role is to analyse the portfolio spend and risk data and give a concise narrative (3-5 sentences) covering:
+1. What the financial position looks like — where the portfolio is healthy.
+2. Where the biggest financial risks and spend exposures are concentrated.
+3. What financial controls or decisions are needed to protect the budget.
+Write in plain business English. Be direct about financial risk. Do not use bullet points — write in flowing prose.
+Do not repeat the raw numbers verbatim; interpret what they mean for the company's financial position.""",
+
+    "project_controls": """You are a data analyst briefing a Project Controls Lead on forecast process discipline.
+Your role is to analyse forecast stability, revision patterns, lead-time data and risk trends and give a concise narrative (3-5 sentences) covering:
+1. Where control processes are working and forecasts are stable.
+2. Where process discipline is breaking down — excessive revisions, instability, or escalating risk.
+3. What specific control actions should be prioritised to improve forecast accuracy and reduce churn.
+Write in plain business English. Be specific about process failures. Do not use bullet points — write in flowing prose.
+Do not repeat the raw numbers verbatim; interpret what they mean for the controls team.""",
+}
+
+_PERSONA_PROMPT_FILES: dict[str, str] = {
+    "programme_director": "system_prompt_persona_programme_director.txt",
+    "commercial_manager": "system_prompt_persona_commercial_manager.txt",
+    "cfo": "system_prompt_persona_cfo.txt",
+    "project_controls": "system_prompt_persona_project_controls.txt",
+}
+
+
+def load_persona_system_prompt(persona: str) -> str | None:
+    prompt_filename = _PERSONA_PROMPT_FILES.get(persona)
+    if prompt_filename:
+        prompt_path = PROMPTS_DIR / prompt_filename
+        if prompt_path.exists():
+            try:
+                content = prompt_path.read_text(encoding="utf-8").strip()
+                if content:
+                    return content
+            except Exception as e:
+                print(f"Could not read persona system prompt for {persona}: {e}")
+
+    return _PERSONA_SYSTEM_PROMPT_FALLBACKS.get(persona)
+
+
+def save_system_prompt(target_col: str) -> Path:
+    """Save the recommendations system prompt to a file (used for the recommendations table)."""
+    prompt_content = _RECOMMENDATIONS_SYSTEM_PROMPT.format(target_col=target_col)
+    prompt_path = PROMPTS_DIR / f"system_prompt_{target_col}.txt"
+    prompt_path.write_text(prompt_content, encoding="utf-8")
+    return prompt_path
+
+
+_RECOMMENDATIONS_SYSTEM_PROMPT = """You are a senior business advisor for supply-chain forecasting.
 
 Use PCA and prediction outputs to suggest practical improvements for target metric: {target_col}.
 
@@ -1172,12 +1268,59 @@ Rules:
 - Do not include any text outside JSON."""
 
 
-def save_system_prompt(target_col: str) -> Path:
-    """Generate and save the system prompt to a file."""
-    prompt_content = generate_system_prompt(target_col)
-    prompt_path = PROMPTS_DIR / f"system_prompt_{target_col}.txt"
-    prompt_path.write_text(prompt_content, encoding="utf-8")
-    return prompt_path
+def get_llm_persona_summary(
+    persona: str,
+    data_context: dict,
+    target_col: str,
+) -> str | None:
+    """Call the LLM to generate a plain-text analytical summary for the given persona.
+
+    Returns a narrative string, or None if LLM is unavailable or fails.
+    """
+    if not LLM_AVAILABLE:
+        return None
+
+    system_prompt = load_persona_system_prompt(persona)
+    if not system_prompt:
+        return None
+
+    try:
+        access_token = get_llm_access_token()
+        if not access_token:
+            return None
+
+        # Build a readable data context block from the dict
+        context_lines = [f"Target metric being predicted: {target_col}", ""]
+        for key, value in data_context.items():
+            if value is None or (isinstance(value, float) and pd.isna(value)):
+                continue
+            if isinstance(value, float):
+                context_lines.append(f"{key}: {value:.2f}")
+            else:
+                context_lines.append(f"{key}: {value}")
+
+        user_prompt = (
+            "Here is the latest data for your analysis:\n\n"
+            + "\n".join(context_lines)
+            + "\n\nPlease provide your analytical summary now."
+        )
+
+        with with_genai_cwd():
+            response = make_LLM_call(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                access_token=access_token,
+                temp=0.7,
+                model="anthropic/claude-haiku-4-5",
+                enable_rag=False,
+                max_completion_tokens=400,
+            )
+        if not response or not response.strip():
+            return None
+        return response.strip()
+    except Exception as e:
+        print(f"LLM persona summary failed ({persona}): {e}")
+        return None
 
 
 def get_llm_recommendations(
@@ -1440,7 +1583,7 @@ def build_graphs(
     supplier_watchlist = summarize_supplier_watchlist(
         supplier_analysis_view,
         probability_col,
-        top_n=10,
+        top_n=5,
     )
 
     contract_fig = None
@@ -1490,7 +1633,7 @@ def build_graphs(
 
     supplier_watchlist_fig = None
     if not supplier_watchlist.empty:
-        watchlist_df = supplier_watchlist.sort_values("avg_failed_proposal_probability", ascending=True).copy()
+        watchlist_df = supplier_watchlist.copy()
         watchlist_df["delta_vs_average"] = watchlist_df["avg_failed_proposal_probability_pct"] - avg_risk_pct
         watchlist_df["bar_label"] = watchlist_df.apply(
             lambda row: f"{row['avg_failed_proposal_probability_pct']:.1f}% ({row['delta_vs_average']:+.1f} pts)",
@@ -1506,52 +1649,86 @@ def build_graphs(
             ) or "Supplier detail available",
             axis=1,
         )
-        supplier_watchlist_fig = px.bar(
-            watchlist_df,
-            x="avg_failed_proposal_probability_pct",
-            y="Supplier_ID",
-            orientation="h",
-            color="avg_failed_proposal_probability_pct",
-            color_continuous_scale=[
-                [0.0, "#fee2e2"],
-                [0.35, "#fca5a5"],
-                [0.7, "#ef4444"],
-                [1.0, "#991b1b"],
-            ],
-            title="Supplier watchlist",
-            text="bar_label",
-            custom_data=["supplier_summary", "record_count"],
+
+        # Sort for display: high risk at top (descending), low risk at bottom (ascending within group)
+        high_risk_df = watchlist_df[watchlist_df["watchlist_group"] == "⚠ Highest risk"].sort_values(
+            "avg_failed_proposal_probability", ascending=True
         )
-        supplier_watchlist_fig.update_traces(
-            textposition="auto",
-            cliponaxis=True,
-            constraintext="both",
-            marker_line_color="#ffffff",
-            marker_line_width=1.5,
-            hovertemplate=(
-                "<b>%{y}</b><br>"
-                "Failed proposal probability: %{x:.1f}%<br>"
-                "Supplier context: %{customdata[0]}<br>"
-                "Records analysed: %{customdata[1]}<extra></extra>"
-            ),
+        low_risk_df = watchlist_df[watchlist_df["watchlist_group"] == "✓ Lowest risk"].sort_values(
+            "avg_failed_proposal_probability", ascending=True
         )
+        plot_df = pd.concat([low_risk_df, high_risk_df], ignore_index=True)
+
+        color_map = {
+            "⚠ Highest risk": "#ef4444",
+            "✓ Lowest risk": "#22c55e",
+        }
+        plot_df["bar_color"] = plot_df["watchlist_group"].map(color_map)
+
+        supplier_watchlist_fig = go.Figure()
+        for group_label, group_color in color_map.items():
+            grp = plot_df[plot_df["watchlist_group"] == group_label]
+            if grp.empty:
+                continue
+            supplier_watchlist_fig.add_trace(
+                go.Bar(
+                    x=grp["avg_failed_proposal_probability_pct"],
+                    y=grp["Supplier_ID"].astype(str),
+                    orientation="h",
+                    name=group_label,
+                    marker=dict(
+                        color=group_color,
+                        line=dict(color="#ffffff", width=1.5),
+                    ),
+                    text=grp["bar_label"],
+                    textposition="auto",
+                    customdata=grp[["supplier_summary", "record_count"]].values,
+                    hovertemplate=(
+                        "<b>%{y}</b><br>"
+                        "Failed proposal probability: %{x:.1f}%<br>"
+                        "Supplier context: %{customdata[0]}<br>"
+                        "Records analysed: %{customdata[1]}<extra></extra>"
+                    ),
+                )
+            )
+
         supplier_watchlist_fig.add_vline(
             x=avg_risk_pct,
             line_dash="dash",
             line_color="#475569",
             line_width=1.5,
-            annotation_text=f"Current average {avg_risk_pct:.1f}%",
-            annotation_position="top right",
-            annotation_font_color="#334155",
+        )
+        supplier_watchlist_fig.add_annotation(
+            x=avg_risk_pct,
+            xref="x",
+            y=1.0,
+            yref="paper",
+            yanchor="top",
+            text=f"↑ Portfolio avg: {avg_risk_pct:.1f}%",
+            showarrow=False,
+            font={"size": 11, "color": "#334155"},
+            bgcolor="#f1f5f9",
+            bordercolor="#94a3b8",
+            borderwidth=1,
+            borderpad=3,
         )
         supplier_watchlist_fig.update_layout(
+            title={
+                "text": "Supplier watchlist<br><sup>Top 5 highest risk &nbsp;|&nbsp; Top 5 lowest risk</sup>",
+                "x": 0,
+                "xanchor": "left",
+                "y": 0.98,
+                "yanchor": "top",
+            },
             xaxis_title="Average failed proposal probability (%)",
             yaxis_title="Supplier",
+            barmode="relative",
+            legend={"title": "Group", "orientation": "h", "y": -0.18, "x": 0},
             coloraxis_showscale=False,
             plot_bgcolor="#f8fafc",
             paper_bgcolor="#ffffff",
             font={"family": "Segoe UI, Arial, sans-serif", "size": 12, "color": "#1f2937"},
-            margin={"l": 10, "r": 50, "t": 60, "b": 50},
+            margin={"l": 10, "r": 50, "t": 100, "b": 80},
             title_font={"size": 18, "color": "#111827"},
             uniformtext={"minsize": 9, "mode": "hide"},
             xaxis={"showgrid": True, "gridcolor": "#e2e8f0", "zeroline": False, "ticksuffix": "%"},
@@ -1725,12 +1902,67 @@ def build_graphs(
                     "Failed proposal probability: %{y:.1%}<extra></extra>"
                 ),
             )
+
+            if len(scatter_df) >= 2 and scatter_df["Forecast_Spend"].nunique() > 1:
+                spend_vals = scatter_df["Forecast_Spend"].to_numpy(dtype=float)
+                risk_vals = scatter_df["predicted_failure_likelihood_linear"].to_numpy(dtype=float)
+                log_spend = np.log1p(spend_vals)
+                slope, intercept = np.polyfit(log_spend, risk_vals, 1)
+
+                trend_df = scatter_df[["Forecast_Spend"]].copy().sort_values("Forecast_Spend")
+                trend_df = trend_df.drop_duplicates(subset=["Forecast_Spend"])
+                trend_df["trend_probability"] = intercept + slope * np.log1p(trend_df["Forecast_Spend"].to_numpy(dtype=float))
+                trend_df["trend_probability"] = np.clip(trend_df["trend_probability"], 0.0, 1.0)
+
+                cfo_risk_spend_scatter.add_trace(
+                    go.Scatter(
+                        x=trend_df["Forecast_Spend"],
+                        y=trend_df["trend_probability"],
+                        mode="lines",
+                        name="Best-fit trend",
+                        line={"color": "#0f172a", "width": 3, "dash": "dash"},
+                        hovertemplate=(
+                            "Best-fit trend<br>"
+                            "Forecast spend: GBP %{x:,.0f}<br>"
+                            "Expected failed proposal probability: %{y:.1%}<extra></extra>"
+                        ),
+                    )
+                )
+
+                corr = float(np.corrcoef(log_spend, risk_vals)[0, 1]) if len(risk_vals) > 1 else float("nan")
+                if np.isnan(corr):
+                    story_text = "The fitted trendline summarises the overall relationship between spend and failed proposal probability."
+                elif corr >= 0.2:
+                    story_text = "Higher-spend items are generally associated with higher failed proposal probability."
+                elif corr <= -0.2:
+                    story_text = "Higher-spend items are generally associated with lower failed proposal probability."
+                else:
+                    story_text = "The relationship between spend and failed proposal probability appears weak overall."
+
+                cfo_risk_spend_scatter.add_annotation(
+                    xref="paper",
+                    yref="paper",
+                    x=0.01,
+                    y=0.99,
+                    xanchor="left",
+                    yanchor="top",
+                    text=story_text,
+                    showarrow=False,
+                    bgcolor="rgba(255,255,255,0.88)",
+                    bordercolor="#cbd5e1",
+                    borderwidth=1,
+                    borderpad=4,
+                    font={"size": 11, "color": "#334155"},
+                )
+
             cfo_risk_spend_scatter.update_layout(
                 xaxis_title="Forecast spend (GBP)",
                 yaxis_title="Failed proposal probability",
                 coloraxis_colorbar_title="Probability",
                 plot_bgcolor="#f8fafc",
                 paper_bgcolor="#ffffff",
+                legend={"orientation": "h", "x": 0, "y": 1.12},
+                margin={"l": 10, "r": 10, "t": 90, "b": 40},
                 xaxis={"showgrid": True, "gridcolor": "#e2e8f0"},
                 yaxis={"showgrid": True, "gridcolor": "#e2e8f0", "tickformat": ".0%"},
             )
@@ -1854,7 +2086,7 @@ def build_graphs(
                 x="trend_month",
                 y="avg_failed_probability_pct",
                 markers=True,
-                title="Change in forecast failure probability over time",
+                title="\nChange in forecast failure probability over time",
             )
             operations_risk_trend_fig.update_traces(
                 line={"color": "#1d4ed8", "width": 3},
@@ -1875,40 +2107,6 @@ def build_graphs(
                 yaxis={"showgrid": True, "gridcolor": "#e2e8f0", "ticksuffix": "%"},
                 margin={"l": 10, "r": 10, "t": 60, "b": 40},
             )
-            active_filters = []
-            if selected_programme:
-                active_filters.append(f"Programme={selected_programme}")
-            if selected_region:
-                active_filters.append(f"Region={selected_region}")
-            if selected_contract_type:
-                active_filters.append(f"Contract={selected_contract_type}")
-            if selected_supplier_profile:
-                active_filters.append(f"Profile={selected_supplier_profile}")
-            if float(min_risk_filter) > 0:
-                active_filters.append(f"MinRisk={float(min_risk_filter):.0%}")
-
-            filter_txt = " | ".join(active_filters) if active_filters else "All active records"
-            operations_risk_trend_fig.add_annotation(
-                xref="paper",
-                yref="paper",
-                x=0,
-                y=1.14,
-                text=f"View: {filter_txt} | Records: {len(trend_df):,}",
-                showarrow=False,
-                align="left",
-                font={"size": 11, "color": "#334155"},
-            )
-            if trend_source:
-                operations_risk_trend_fig.add_annotation(
-                    xref="paper",
-                    yref="paper",
-                    x=1,
-                    y=1.12,
-                    text=f"Source: {trend_source}",
-                    showarrow=False,
-                    font={"size": 11, "color": "#475569"},
-                )
-
     next_month_forecast = np.nan
     next_month_failure_prob = np.nan
     if "Forecast_Period" in programme_view.columns and "Forecast_Spend" in programme_view.columns:
@@ -1931,19 +2129,22 @@ def build_graphs(
         return "Red", "kpi-red"
 
     risk_label, risk_class = _risk_band(next_month_failure_prob)
-    programme_director_summary_text = build_programme_director_summary(
-        programme_view=programme_view,
-        target_col=target_col,
-        metrics=metrics,
-        next_month_forecast=next_month_forecast,
-        next_month_failure_prob=next_month_failure_prob,
-        risk_label=risk_label,
-    )
-    programme_director_summary_card = build_persona_summary_card(
-        programme_director_summary_text,
-        accent="#c7d2fe",
-        background="#eef2ff",
-    )
+
+    # --- Programme Director summary (risk_alerts added below once computed) ---
+    _pd_context: dict = {
+        "Average predicted failure likelihood": avg_risk,
+        "High-risk records (>=50%)": f"{float((pd.to_numeric(programme_view['predicted_failure_likelihood_linear'], errors='coerce').dropna() >= 0.5).mean()):.1%}" if "predicted_failure_likelihood_linear" in programme_view.columns else "N/A",
+        "Next month forecast spend (GBP)": next_month_forecast,
+        "Next month failure probability": next_month_failure_prob,
+        "Risk status": risk_label,
+        "Forecast stability score (avg)": float(pd.to_numeric(programme_view.get("Forecast_Stability_Score", pd.Series(dtype=float)), errors="coerce").mean()) if "Forecast_Stability_Score" in programme_view.columns else float("nan"),
+        "Commitment ratio (avg)": float(pd.to_numeric(programme_view.get("Commitment_Ratio", pd.Series(dtype=float)), errors="coerce").mean()) if "Commitment_Ratio" in programme_view.columns else float("nan"),
+        "Total forecast spend (GBP)": float(pd.to_numeric(programme_view.get("Forecast_Spend", pd.Series(dtype=float)), errors="coerce").sum()) if "Forecast_Spend" in programme_view.columns else float("nan"),
+        "Total actual spend (GBP)": float(pd.to_numeric(programme_view.get("Actual_Spend", pd.Series(dtype=float)), errors="coerce").sum()) if "Actual_Spend" in programme_view.columns else float("nan"),
+        "Model key driver": metrics.get("feature_used", "N/A"),
+        "ROC AUC": metrics.get("roc_auc", float("nan")),
+        "Top PCA drivers": ", ".join(top_factors[:5]),
+    }
 
     rec_rows = get_llm_recommendations(top_factors, target_col, avg_risk, metrics)
     if not rec_rows:
@@ -1981,7 +2182,7 @@ def build_graphs(
                                 html.Th("Expected Improvement"),
                                 html.Th("Implementation Steps"),
                             ],
-                            style={"backgroundColor": "#7c3aed", "color": "white", "fontWeight": "600"}
+                            style={"backgroundColor": "#7c3aed", "color": "white", "fontWeight": "600"},
                         )
                     ),
                     html.Tbody(
@@ -2073,60 +2274,6 @@ def build_graphs(
             )
         )
 
-    ops_fig = None
-    if "Supplier_ID" in programme_view.columns and "Region" in programme_view.columns:
-        heat = (
-            programme_view.groupby(["Supplier_ID", "Region"], dropna=False)["predicted_failure_likelihood_linear"]
-            .mean()
-            .reset_index(name="avg_predicted_risk")
-        )
-        heat["supplier_region"] = heat["Supplier_ID"].astype(str) + " | " + heat["Region"].astype(str)
-        top_supplier_region = heat.sort_values("avg_predicted_risk", ascending=False).head(FILTER_DEFAULT_SUPPLIER_TOPN).copy()
-        top_supplier_region["avg_predicted_risk_pct"] = top_supplier_region["avg_predicted_risk"] * 100
-
-        chart_height = max(520, min(980, 26 * len(top_supplier_region) + 160))
-        ops_fig = px.bar(
-            top_supplier_region.sort_values("avg_predicted_risk_pct", ascending=True),
-            x="avg_predicted_risk_pct",
-            y="supplier_region",
-            orientation="h",
-            color="avg_predicted_risk_pct",
-            color_continuous_scale=[
-                [0.0, "#fee2e2"],
-                [0.35, "#fca5a5"],
-                [0.7, "#ef4444"],
-                [1.0, "#991b1b"],
-            ],
-            title="Top supplier-region risk pairs",
-            text="avg_predicted_risk_pct",
-            custom_data=["Supplier_ID", "Region"],
-        )
-        ops_fig.update_traces(
-            texttemplate="%{text:.1f}%",
-            textposition="auto",
-            cliponaxis=True,
-            constraintext="both",
-            marker_line_color="#ffffff",
-            marker_line_width=1,
-            hovertemplate=(
-                "Supplier: %{customdata[0]}<br>"
-                "Region: %{customdata[1]}<br>"
-                "Failed proposal probability: %{x:.1f}%<extra></extra>"
-            ),
-        )
-        ops_fig.update_layout(
-            xaxis_title="Average failed proposal probability (%)",
-            yaxis_title="Supplier | Region",
-            coloraxis_showscale=False,
-            height=chart_height,
-            plot_bgcolor="#f8fafc",
-            paper_bgcolor="#ffffff",
-            margin={"l": 20, "r": 50, "t": 70, "b": 40},
-            uniformtext={"minsize": 9, "mode": "hide"},
-            xaxis={"showgrid": True, "gridcolor": "#e2e8f0", "ticksuffix": "%"},
-            yaxis={"showgrid": False},
-        )
-
     kpi_cards = html.Div(
         [
             html.Div(
@@ -2163,7 +2310,29 @@ def build_graphs(
 
     # Calculate risk alerts based on active filters so cards refresh with selections.
     risk_alerts = calculate_risk_alerts(programme_view, "predicted_failure_likelihood_linear")
-    
+
+    # Now that risk_alerts is available, complete the Programme Director data context
+    _pd_context["Supplier delay risk status"] = risk_alerts["supplier_delay_risk"]["status"]
+    _pd_context["Cost volatility status"] = risk_alerts["cost_volatility"]["status"]
+    _pd_context["Demand spike status"] = risk_alerts["demand_spike"]["status"]
+
+    programme_director_summary_text = (
+        get_llm_persona_summary("programme_director", _pd_context, target_col)
+        or build_programme_director_summary(
+            programme_view=programme_view,
+            target_col=target_col,
+            metrics=metrics,
+            next_month_forecast=next_month_forecast,
+            next_month_failure_prob=next_month_failure_prob,
+            risk_label=risk_label,
+        )
+    )
+    programme_director_summary_card = build_persona_summary_card(
+        programme_director_summary_text,
+        accent="#c7d2fe",
+        background="#eef2ff",
+    )
+
     def _get_alert_card_class(status: str) -> str:
         if status == "Red":
             return "risk-alert-red"
@@ -2246,13 +2415,38 @@ def build_graphs(
         style={"display": "grid", "gridTemplateColumns": "repeat(3, minmax(200px, 1fr))", "gap": "15px", "marginBottom": "20px"}
     )
 
-    commercial_manager_summary_text = build_commercial_manager_summary(
-        supplier_analysis_view=supplier_analysis_view,
-        contract_summary=contract_summary,
-        profile_summary=profile_summary,
-        commodity_summary=commodity_summary,
-        supplier_watchlist=supplier_watchlist,
-        risk_alerts=risk_alerts,
+    # --- Commercial Manager summary ---
+    _cm_context: dict = {
+        "Average predicted failure likelihood across portfolio": avg_risk,
+        "Number of suppliers analysed": int(supplier_analysis_view["Supplier_ID"].nunique()) if "Supplier_ID" in supplier_analysis_view.columns else "N/A",
+        "Supplier delay risk status": risk_alerts["supplier_delay_risk"]["status"],
+        "Cost volatility status": risk_alerts["cost_volatility"]["status"],
+    }
+    if not contract_summary.empty:
+        best = contract_summary.sort_values("avg_failed_proposal_probability").iloc[0]
+        worst = contract_summary.sort_values("avg_failed_proposal_probability", ascending=False).iloc[0]
+        _cm_context["Best performing contract type"] = f"{best['category']} ({best['avg_failed_proposal_probability']:.1%})"
+        _cm_context["Highest risk contract type"] = f"{worst['category']} ({worst['avg_failed_proposal_probability']:.1%})"
+    if not profile_summary.empty:
+        riskiest_profile = profile_summary.sort_values("avg_failed_proposal_probability", ascending=False).iloc[0]
+        _cm_context["Highest risk supplier profile"] = f"{riskiest_profile['category']} ({riskiest_profile['avg_failed_proposal_probability']:.1%})"
+    if not commodity_summary.empty:
+        riskiest_commodity = commodity_summary.sort_values("avg_failed_proposal_probability", ascending=False).iloc[0]
+        _cm_context["Highest risk commodity"] = f"{riskiest_commodity['category']} ({riskiest_commodity['avg_failed_proposal_probability']:.1%})"
+    if not supplier_watchlist.empty:
+        top_watch = supplier_watchlist[supplier_watchlist["watchlist_group"] == "⚠ Highest risk"]
+        if not top_watch.empty:
+            _cm_context["Highest risk supplier"] = f"{top_watch.iloc[0]['Supplier_ID']} ({top_watch.iloc[0]['avg_failed_proposal_probability']:.1%})"
+    commercial_manager_summary_text = (
+        get_llm_persona_summary("commercial_manager", _cm_context, target_col)
+        or build_commercial_manager_summary(
+            supplier_analysis_view=supplier_analysis_view,
+            contract_summary=contract_summary,
+            profile_summary=profile_summary,
+            commodity_summary=commodity_summary,
+            supplier_watchlist=supplier_watchlist,
+            risk_alerts=risk_alerts,
+        )
     )
     commercial_manager_summary_card = build_persona_summary_card(
         commercial_manager_summary_text,
@@ -2260,7 +2454,31 @@ def build_graphs(
         background="#eff6ff",
     )
 
-    cfo_summary_text = build_cfo_summary(cfo_view)
+    # --- CFO summary ---
+    _cfo_context: dict = {
+        "Total portfolio forecast spend (GBP)": float(pd.to_numeric(cfo_view.get("Forecast_Spend", pd.Series(dtype=float)), errors="coerce").sum()) if "Forecast_Spend" in cfo_view.columns else float("nan"),
+        "Total actual spend (GBP)": float(pd.to_numeric(cfo_view.get("Actual_Spend", pd.Series(dtype=float)), errors="coerce").sum()) if "Actual_Spend" in cfo_view.columns else float("nan"),
+        "Average predicted failure likelihood": float(pd.to_numeric(cfo_view.get("predicted_failure_likelihood_linear", pd.Series(dtype=float)), errors="coerce").mean()) if "predicted_failure_likelihood_linear" in cfo_view.columns else float("nan"),
+    }
+    if {"Forecast_Spend", "predicted_failure_likelihood_linear"}.issubset(cfo_view.columns):
+        _fs = pd.to_numeric(cfo_view["Forecast_Spend"], errors="coerce")
+        _pr = pd.to_numeric(cfo_view["predicted_failure_likelihood_linear"], errors="coerce")
+        _valid = _fs.notna() & _pr.notna()
+        if _valid.any():
+            _cfo_context["Risk-adjusted at-risk spend (GBP)"] = float((_fs[_valid] * _pr[_valid]).sum())
+    if "Programme_ID" in cfo_view.columns and "predicted_failure_likelihood_linear" in cfo_view.columns:
+        prog_risk = (
+            cfo_view.assign(p=pd.to_numeric(cfo_view["predicted_failure_likelihood_linear"], errors="coerce"))
+            .dropna(subset=["p"])
+            .groupby("Programme_ID")["p"].mean()
+            .sort_values(ascending=False)
+        )
+        if not prog_risk.empty:
+            _cfo_context["Highest risk programmes"] = ", ".join(prog_risk.head(3).index.astype(str).tolist())
+    cfo_summary_text = (
+        get_llm_persona_summary("cfo", _cfo_context, target_col)
+        or build_cfo_summary(cfo_view)
+    )
     cfo_summary_card = build_persona_summary_card(
         cfo_summary_text,
         accent="#c7d2fe",
@@ -2445,10 +2663,24 @@ def build_graphs(
         }
         for i in range(min(5, len(top_factors)))
     ]
-    project_controls_summary_text = build_project_controls_summary(
-        programme_view=programme_view,
-        risk_alerts=risk_alerts,
-        top_risk_drivers=risk_alerts_data,
+    # --- Project Controls summary ---
+    _pc_context: dict = {
+        "Average predicted failure likelihood": avg_risk,
+        "Forecast stability score (avg)": float(pd.to_numeric(programme_view.get("Forecast_Stability_Score", pd.Series(dtype=float)), errors="coerce").mean()) if "Forecast_Stability_Score" in programme_view.columns else float("nan"),
+        "Average revision number": float(pd.to_numeric(programme_view.get("Revision_Number", pd.Series(dtype=float)), errors="coerce").mean()) if "Revision_Number" in programme_view.columns else float("nan"),
+        "Average days before period": float(pd.to_numeric(programme_view.get("Days_Before_Period", pd.Series(dtype=float)), errors="coerce").mean()) if "Days_Before_Period" in programme_view.columns else float("nan"),
+        "Supplier delay risk status": risk_alerts["supplier_delay_risk"]["status"],
+        "Cost volatility status": risk_alerts["cost_volatility"]["status"],
+        "Demand spike status": risk_alerts["demand_spike"]["status"],
+        "Top risk drivers": ", ".join(d["factor"] for d in risk_alerts_data[:3]),
+    }
+    project_controls_summary_text = (
+        get_llm_persona_summary("project_controls", _pc_context, target_col)
+        or build_project_controls_summary(
+            programme_view=programme_view,
+            risk_alerts=risk_alerts,
+            top_risk_drivers=risk_alerts_data,
+        )
     )
     project_controls_summary_card = build_persona_summary_card(
         project_controls_summary_text,
@@ -2481,8 +2713,6 @@ def build_graphs(
             )
         )
     project_controls_blocks.extend([
-        html.H4("Supplier / Region Risk Snapshot"),
-        dcc.Graph(figure=ops_fig if ops_fig is not None else hist_fig),
         html.H4("Top 5 Risk Drivers & Explanations"),
         html.Table(
             [

@@ -2,3 +2,4 @@
 .env
 Challenge 3 Rolls Royce.pdf
 \outputs
+\__pycache__/*
