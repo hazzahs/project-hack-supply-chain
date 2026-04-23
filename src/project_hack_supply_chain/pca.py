@@ -6,8 +6,10 @@ from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
+from .paths import DATA_DIR
 
-def clean_data(file_path: str = "data/forecast_data.csv") -> pd.DataFrame:
+
+def clean_data(file_path: str = str(DATA_DIR / "forecast_data.csv")) -> pd.DataFrame:
     df = pd.read_csv(file_path)
 
     df["Forecast_Version_Date"] = pd.to_datetime(df["Forecast_Version_Date"], errors="coerce")
@@ -92,7 +94,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="PCA analysis for forecast failure data")
     parser.add_argument(
         "--input",
-        default="data/forecast_data.csv",
+        default=str(DATA_DIR / "forecast_data.csv"),
         help="Path to forecast CSV file",
     )
     parser.add_argument(

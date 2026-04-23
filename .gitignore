@@ -1,5 +1,21 @@
-.\idea
+.idea/
+.codex
 .env
+.envrc.local
+.venv/
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+*.egg-info/
+.eggs/
+
+outputs/
+*.html
+
+.DS_Store
+
 Challenge 3 Rolls Royce.pdf
 \outputs
 \__pycache__/*

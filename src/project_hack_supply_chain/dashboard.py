@@ -15,9 +15,10 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-from forecast_failure_model import extract_days_from_terms
-from pca_analysis import get_numeric_features
-from pca_linear_workflow import (
+from .forecast_failure import extract_days_from_terms
+from .paths import ASSETS_DIR, DATA_DIR, PROMPTS_DIR
+from .pca import get_numeric_features
+from .workflow import (
     DEFAULT_TARGET,
     ensure_event_id,
     find_influential_factor,
@@ -56,10 +57,8 @@ def with_genai_cwd():
             os.chdir(current)
 
 
-BASE_DIR = Path(__file__).resolve().parent
-DEFAULT_INPUT_PATH = BASE_DIR / "data" / "forecast_data.csv"
-DEFAULT_SUPPLIER_PATH = BASE_DIR / "data" / "supplier_attributes.csv"
-PROMPTS_DIR = BASE_DIR / "prompts"
+DEFAULT_INPUT_PATH = DATA_DIR / "forecast_data.csv"
+DEFAULT_SUPPLIER_PATH = DATA_DIR / "supplier_attributes.csv"
 GAIA_CRED_PATH = Path(r"C:\my_files\source_code\gen-ai\copilot_ignore\gaia_api_key.yaml")
 PROMPTS_DIR.mkdir(exist_ok=True)
 FIXED_N_COMPONENTS = "0.95"
@@ -2757,7 +2756,7 @@ def build_graphs(
     return graphs
 
 
-app = dash.Dash(__name__)
+app = dash.Dash(__name__, assets_folder=str(ASSETS_DIR))
 app.title = "PCA Linear Forecast Dashboard"
 
 app.layout = html.Div(
@@ -3210,7 +3209,11 @@ def download_predictions(n_clicks, predictions_json):
     return dcc.send_data_frame(df.to_csv, "workflow_linear_predictions_uploaded.csv", index=False)
 
 
-if __name__ == "__main__":
+def main() -> None:
     app.run(debug=True)
+
+
+if __name__ == "__main__":
+    main()
 
 

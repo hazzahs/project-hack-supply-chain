@@ -6,6 +6,8 @@ import pandas as pd
 import plotly.express as px
 import plotly.io as pio
 
+from .paths import OUTPUTS_DIR
+
 TARGET = "Forecast_Failed_Flag"
 
 
@@ -100,7 +102,7 @@ def build_visuals(output_dir: Path, html_name: str) -> Path:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build Plotly visuals from saved PCA + linear workflow outputs.")
-    parser.add_argument("--output-dir", default="outputs", help="Folder containing workflow CSV outputs")
+    parser.add_argument("--output-dir", default=str(OUTPUTS_DIR), help="Folder containing workflow CSV outputs")
     parser.add_argument("--html-name", default="workflow_plotly_visuals.html", help="Name of generated HTML report")
     args = parser.parse_args()
 

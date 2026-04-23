@@ -12,9 +12,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 from sklearn.metrics import auc, precision_recall_curve, roc_curve
 
-from forecast_failure_model import build_pipeline, extract_days_from_terms, load_data
-
-BASE_DIR = Path(__file__).resolve().parent
+from .forecast_failure import build_pipeline, extract_days_from_terms, load_data
+from .paths import ASSETS_DIR, DATA_DIR, REPO_ROOT
 
 
 def resolve_existing_path(*candidates: Path) -> Path | None:
@@ -26,19 +25,19 @@ def resolve_existing_path(*candidates: Path) -> Path | None:
 
 DEFAULT_SCORED_PATH = resolve_existing_path(
     Path(os.getenv("FORECAST_SCORED_PATH", "")) if os.getenv("FORECAST_SCORED_PATH") else None,
-    BASE_DIR / "forecast_failure_scored.csv",
+    REPO_ROOT / "forecast_failure_scored.csv",
     Path.cwd() / "forecast_failure_scored.csv",
 )
 
 DEFAULT_TRAIN_PATH = resolve_existing_path(
     Path(os.getenv("FORECAST_TRAIN_PATH", "")) if os.getenv("FORECAST_TRAIN_PATH") else None,
-    BASE_DIR / "data" / "forecast_data.csv",
+    DATA_DIR / "forecast_data.csv",
     Path.cwd() / "data" / "forecast_data.csv",
 )
 
 DEFAULT_SUPPLIER_PATH = resolve_existing_path(
     Path(os.getenv("FORECAST_SUPPLIER_PATH", "")) if os.getenv("FORECAST_SUPPLIER_PATH") else None,
-    BASE_DIR / "data" / "supplier_attributes.csv",
+    DATA_DIR / "supplier_attributes.csv",
     Path.cwd() / "data" / "supplier_attributes.csv",
 )
 
@@ -393,7 +392,7 @@ def build_graphs(df: pd.DataFrame) -> list:
     return graphs
 
 
-app = dash.Dash(__name__)
+app = dash.Dash(__name__, assets_folder=str(ASSETS_DIR))
 app.title = "Forecast Failure Risk Dashboard"
 
 app.layout = html.Div(
@@ -479,7 +478,11 @@ def render_dashboard(contents, filename, threshold):
         return f"Error: {exc}", []
 
 
-if __name__ == "__main__":
+def main() -> None:
     app.run(debug=True)
+
+
+if __name__ == "__main__":
+    main()
 
 

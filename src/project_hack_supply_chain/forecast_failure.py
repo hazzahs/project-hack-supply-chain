@@ -16,6 +16,8 @@ from sklearn.metrics import (
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
+from .paths import DATA_DIR, REPO_ROOT
+
 
 def extract_days_from_terms(value: object) -> float:
     if pd.isna(value):
@@ -27,8 +29,8 @@ def extract_days_from_terms(value: object) -> float:
 
 
 def load_data(
-    forecast_path: str = "data/forecast_data.csv",
-    supplier_path: str = "data/supplier_attributes.csv",
+    forecast_path: str = str(DATA_DIR / "forecast_data.csv"),
+    supplier_path: str = str(DATA_DIR / "supplier_attributes.csv"),
 ) -> pd.DataFrame:
     df = pd.read_csv(forecast_path)
 
@@ -128,11 +130,11 @@ def build_pipeline(categorical_features: list[str], numeric_features: list[str])
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Forecast failure likelihood model with supplier attributes")
-    parser.add_argument("--forecast-path", default="data/forecast_data.csv")
-    parser.add_argument("--supplier-path", default="data/supplier_attributes.csv")
+    parser.add_argument("--forecast-path", default=str(DATA_DIR / "forecast_data.csv"))
+    parser.add_argument("--supplier-path", default=str(DATA_DIR / "supplier_attributes.csv"))
     parser.add_argument("--train-frac", type=float, default=0.8)
     parser.add_argument("--threshold", type=float, default=0.5)
-    parser.add_argument("--output", default="forecast_failure_scored.csv")
+    parser.add_argument("--output", default=str(REPO_ROOT / "forecast_failure_scored.csv"))
     parser.add_argument(
         "--feature-mode",
         choices=["full", "stability-only"],
