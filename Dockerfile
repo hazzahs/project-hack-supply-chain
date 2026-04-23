@@ -1,33 +1,37 @@
-FROM python:3.14-slim AS builder
+FROM ghcr.io/astral-sh/uv:debian-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    UV_NO_MANAGED_PYTHON=1 \
-    UV_SYSTEM_CERTS=true
+    UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    UV_PROJECT_ENVIRONMENT=/app/.venv \
+    UV_PYTHON=3.12
 
 WORKDIR /app
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+RUN uv python install 3.12
 
-COPY pyproject.toml uv.lock* ./
-RUN uv sync --frozen --no-install-project --no-editable --no-managed-python
+COPY pyproject.toml uv.lock README.md ./
+RUN uv sync --frozen --no-dev --no-install-project
 
 COPY . .
-RUN rm -rf .venv
-RUN uv sync --frozen --no-editable --no-managed-python
+RUN uv sync --frozen --no-dev
 
-FROM python:3.14-slim AS runtime
+FROM ghcr.io/astral-sh/uv:debian-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PATH="/app/.venv/bin:$PATH" \
-    HOST=127.0.0.1 \
-    PORT=8050
+    PATH="/app/.venv/bin:/root/.local/bin:$PATH" \
+    HOST=0.0.0.0 \
+    PORT=8050 \
+    UV_PYTHON=3.12 \
+    DEBUG=0
 
 WORKDIR /app
 
+COPY --from=builder /root/.local /root/.local
 COPY --from=builder /app /app
 
 EXPOSE 8050
 
-CMD ["project-hack-supply-chain"]
+CMD ["uv", "run", "project-hack-supply-chain"]

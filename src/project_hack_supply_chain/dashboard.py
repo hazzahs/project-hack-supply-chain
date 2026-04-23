@@ -3127,7 +3127,10 @@ def download_predictions(n_clicks, predictions_json):
 
 
 def main() -> None:
-    app.run(debug=True)
+    host = os.getenv("HOST", "127.0.0.1")
+    port = int(os.getenv("PORT", "8050"))
+    debug = os.getenv("DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
+    app.run(host=host, port=port, debug=debug)
 
 
 if __name__ == "__main__":
