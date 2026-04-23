@@ -1629,7 +1629,7 @@ def build_graphs(
                 "text": "Supplier watchlist<br><sup>Top 5 highest risk &nbsp;|&nbsp; Top 5 lowest risk</sup>",
                 "x": 0,
                 "xanchor": "left",
-                "y": 0.98,
+                "y": 0.94,
                 "yanchor": "top",
             },
             xaxis_title="Average failed proposal probability (%)",
@@ -1640,7 +1640,7 @@ def build_graphs(
             plot_bgcolor="#f8fafc",
             paper_bgcolor="#ffffff",
             font={"family": "Segoe UI, Arial, sans-serif", "size": 12, "color": "#1f2937"},
-            margin={"l": 10, "r": 50, "t": 100, "b": 80},
+            margin={"l": 10, "r": 50, "t": 132, "b": 80},
             title_font={"size": 18, "color": "#111827"},
             uniformtext={"minsize": 9, "mode": "hide"},
             xaxis={"showgrid": True, "gridcolor": "#e2e8f0", "zeroline": False, "ticksuffix": "%"},
@@ -2859,7 +2859,7 @@ app.layout = html.Div(
                             marks={0.0: "0%", 0.3: "30%", 0.5: "50%", 0.7: "70%", 0.9: "90%"},
                         ),
                     ],
-                    style={"minWidth": "260px", "maxWidth": "320px"}
+                    style={"minWidth": 0, "maxWidth": "320px", "width": "100%"}
                 ),
                 html.Div(
                     [
