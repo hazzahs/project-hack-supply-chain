@@ -16,6 +16,8 @@ outputs/
 
 .DS_Store
 
+*.pptx
 Challenge 3 Rolls Royce.pdf
 \outputs
 \__pycache__/*
+script.txt

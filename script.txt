@@ -1,0 +1,35 @@
+“Today I’m demoing our forecasting intelligence dashboard, built to solve one core problem: restoring confidence in supply chain spend forecasting.
+
+The challenge is not just predicting a number. It’s being able to explain why forecasts fail, quantify risk, and guide the next best action.
+
+So what we’ve built is role-based insight on top of a shared analytical engine. And because the dashboard uses simple filters and sliders, the data updates dynamically in front of the user. That means leaders can move from a portfolio view into a specific programme, region, contract type, supplier profile, or risk threshold in seconds, without needing technical support.
+
+Let me start in the Programme Director view.
+
+This is the strategic layer.
+
+Here we show the headline KPIs, confidence and risk signals, the top drivers of forecast change, and recommended actions. The value here is trust and defensibility: instead of saying “the number changed,” we can now explain what changed, why it changed, and what to do next.
+
+Next, the Commercial Manager view.
+
+This is where supplier and contract levers become clear.
+
+You can see risk by contract type, supplier profile, commodity, and region interaction. We also show a supplier watchlist with both the top five highest-risk suppliers and the top five lowest-risk suppliers. So this view supports proactive decisions: where to negotiate, where to intervene, and where to replicate best practice.
+
+Now the CFO view.
+
+This is focused on financial exposure and decision confidence.
+
+We show expected at-risk spend concentration by programme, and a spend-versus-failure-probability visual with a best-fit trendline and narrative cue. That means finance leaders can quickly see not just where risk is, but whether risk scales with spend and how concentrated that exposure is across the portfolio.
+
+Then the Project Controls view.
+
+This focuses on operational discipline: forecast stability, revision behavior, and lead-time effects.
+
+It helps controls teams spot where process quality is slipping and where early intervention can reduce churn and prevent late surprises.
+
+Across all personas, the same model outputs are translated into role-specific narratives. That’s important: everyone sees one source of truth, but the story is tailored to the decisions they actually need to make. It also means the dashboard requires minimal training for executives and other non-technical users to start gaining insights from the visualisations.
+
+And from an implementation perspective, it is straightforward to get up and running. It can be installed across Windows, macOS, and Linux, and because it is built on mainstream, widely supported technology, the maintenance burden stays low. That reduces long-term cost and makes it practical to support and enhance in house.
+
+In short, this dashboard turns forecasting from a static reporting exercise into a decision system: clearer trust signals, earlier warnings, dynamic exploration through filters and sliders, and targeted actions to keep programmes on track.”

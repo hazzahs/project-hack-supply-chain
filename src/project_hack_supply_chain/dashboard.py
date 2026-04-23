@@ -2677,7 +2677,7 @@ app.layout = html.Div(
         html.Div(
             [
                 html.Div("Forecast Intelligence", className="title-eyebrow"),
-                html.H2("PCA + Linear Regression Dashboard", className="title-main"),
+                html.H2("Forecast Analysis", className="title-main"),
                 html.P(
                     "Upload a CSV, choose a target column, and generate executive, drill-down, and operations insights.",
                     className="title-sub",
