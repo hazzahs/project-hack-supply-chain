@@ -35,3 +35,32 @@ uv run plotly-pca-linear-visuals --output-dir outputs
 ```
 
 If you prefer script-style commands while cleaning up the repo, use the wrappers under `scripts/`.
+
+## LLM Provider Configuration
+
+The dashboard recommendation summary can call multiple providers directly via API key environment variables.
+
+Set:
+
+```bash
+export LLM_PROVIDER=claude
+```
+
+Supported `LLM_PROVIDER` values:
+- `claude`
+- `gemini`
+- `openai`
+- `openrouter`
+
+API key resolution:
+- `claude`: `ANTHROPIC_API_KEY` or `CLAUDE_API_KEY`, then `API_KEY`
+- `gemini`: `GEMINI_API_KEY` or `GOOGLE_API_KEY`, then `API_KEY`
+- `openai`: `OPENAI_API_KEY`, then `API_KEY`
+- `openrouter`: `OPENROUTER_API_KEY`, then `API_KEY`
+
+Optional model overrides:
+- `LLM_MODEL`
+- `CLAUDE_MODEL`
+- `GEMINI_MODEL`
+- `OPENAI_MODEL`
+- `OPENROUTER_MODEL`
