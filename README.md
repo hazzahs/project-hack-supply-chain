@@ -28,10 +28,26 @@ Persona prompt files currently stored under `prompts/`:
 
 ## Setup
 
-Using `uv`:
+### Docker
+
+To run the application directly please ensure you have the following installed:
+
+- Docker/Podman
+- Docker/Podman compose plugin
+
+After cloning the project to your local machine run
+
+```bash
+docker compose up --build
+```
+
+### Locally
+
+Using [uv](https://docs.astral.sh/uv/getting-started/installation/):
 
 ```bash
 uv sync
+uv run project-hack-supply-chain
 ```
 
 Or with `pip` in an active virtual environment:
