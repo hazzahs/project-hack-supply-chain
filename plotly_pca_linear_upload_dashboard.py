@@ -448,45 +448,402 @@ def build_programme_director_summary(
     if programme_view.empty:
         return "No records are available for the current filter combination, so no reliable forecast narrative can be generated yet."
 
-    actual_rate = np.nan
-    if target_col in programme_view.columns:
-        actual_series = pd.Series(pd.to_numeric(programme_view[target_col], errors="coerce"), index=programme_view.index)
-        if actual_series.notna().any():
-            actual_rate = float(actual_series.mean())
+    def _mean_numeric(column: str) -> float:
+        if column not in programme_view.columns:
+            return float("nan")
+        series = pd.Series(pd.to_numeric(programme_view[column], errors="coerce"), index=programme_view.index)
+        return float(series.mean()) if series.notna().any() else float("nan")
 
-    predicted_rate = np.nan
+    def _sum_numeric(column: str) -> float:
+        if column not in programme_view.columns:
+            return float("nan")
+        series = pd.Series(pd.to_numeric(programme_view[column], errors="coerce"), index=programme_view.index)
+        return float(series.sum()) if series.notna().any() else float("nan")
+
+    actual_rate = _mean_numeric(target_col)
+    predicted_rate = _mean_numeric("predicted_failure_likelihood_linear")
+    commitment_ratio = _mean_numeric("Commitment_Ratio")
+    stability_score = _mean_numeric("Forecast_Stability_Score")
+    forecast_total = _sum_numeric("Forecast_Spend")
+    actual_total = _sum_numeric("Actual_Spend")
+    committed_total = _sum_numeric("Committed_Spend")
+    variance_mean = _mean_numeric("Variance")
+
+    high_risk_share = float("nan")
     if "predicted_failure_likelihood_linear" in programme_view.columns:
-        pred_series = pd.Series(
+        risk_series = pd.Series(
             pd.to_numeric(programme_view["predicted_failure_likelihood_linear"], errors="coerce"),
             index=programme_view.index,
+        ).dropna()
+        if not risk_series.empty:
+            high_risk_share = float((risk_series >= 0.5).mean())
+
+    budget_pressure = 0
+    budget_flags: list[str] = []
+    if pd.notna(forecast_total) and pd.notna(committed_total) and forecast_total > 0:
+        forecast_vs_committed_gap = (forecast_total - committed_total) / forecast_total
+        if forecast_vs_committed_gap > 0.20:
+            budget_pressure += 1
+            budget_flags.append("forecasted spend is running materially ahead of committed cover")
+    if pd.notna(forecast_total) and pd.notna(actual_total) and forecast_total > 0:
+        forecast_vs_actual_gap = (forecast_total - actual_total) / forecast_total
+        if forecast_vs_actual_gap > 0.15:
+            budget_pressure += 1
+            budget_flags.append("actual delivery is lagging the current forecast profile")
+    if pd.notna(commitment_ratio) and commitment_ratio < 0.60:
+        budget_pressure += 1
+        budget_flags.append("commitment coverage remains light")
+    if pd.notna(stability_score) and stability_score < 0.45:
+        budget_pressure += 1
+        budget_flags.append("planning stability is weak")
+    if pd.notna(variance_mean) and variance_mean < 0:
+        budget_pressure += 1
+        budget_flags.append("recent spend variance is trending unfavourably")
+
+    alerts = calculate_risk_alerts(programme_view, "predicted_failure_likelihood_linear")
+    risk_labels = {
+        "supplier_delay_risk": "supplier delivery risk",
+        "cost_volatility": "cost volatility",
+        "demand_spike": "demand pressure",
+    }
+    active_risks = [
+        (risk_labels[key], value)
+        for key, value in alerts.items()
+        if value.get("status") in {"Red", "Amber"}
+    ]
+    active_risks.sort(key=lambda item: item[1].get("score", 0.0), reverse=True)
+
+    overview_state = "broadly controlled"
+    if (
+        (pd.notna(predicted_rate) and predicted_rate >= 0.55)
+        or (pd.notna(high_risk_share) and high_risk_share >= 0.45)
+        or budget_pressure >= 3
+    ):
+        overview_state = "under clear pressure"
+    elif (
+        (pd.notna(predicted_rate) and predicted_rate >= 0.35)
+        or (pd.notna(high_risk_share) and high_risk_share >= 0.25)
+        or budget_pressure >= 2
+    ):
+        overview_state = "manageable but exposed"
+
+    budget_confidence = "high"
+    completion_phrase = "the programme is likely to remain within budget if current controls hold"
+    if budget_pressure >= 3 or (pd.notna(predicted_rate) and predicted_rate >= 0.55):
+        budget_confidence = "low"
+        completion_phrase = "the programme is at material risk of overshooting budget without intervention"
+    elif budget_pressure >= 2 or (pd.notna(predicted_rate) and predicted_rate >= 0.35):
+        budget_confidence = "moderate"
+        completion_phrase = "staying within budget is still achievable, but only with tighter control over upcoming periods"
+
+    trend_text = "near-term risk looks broadly stable"
+    trend_source = None
+    time_candidates = [
+        ("Forecast_Period", lambda s: pd.to_datetime(s.astype(str) + "-01", errors="coerce")),
+        ("Forecast_Period_End_Date", lambda s: pd.to_datetime(s, errors="coerce")),
+        ("Forecast_Version_Date", lambda s: pd.to_datetime(s, errors="coerce")),
+    ]
+    for candidate, converter in time_candidates:
+        if candidate not in programme_view.columns:
+            continue
+        temp = programme_view.copy()
+        temp["summary_period"] = converter(temp[candidate])
+        temp["predicted_failure_likelihood_linear"] = pd.to_numeric(
+            temp["predicted_failure_likelihood_linear"], errors="coerce"
         )
-        if pred_series.notna().any():
-            predicted_rate = float(pred_series.mean())
+        temp = temp.dropna(subset=["summary_period", "predicted_failure_likelihood_linear"])
+        if temp.empty:
+            continue
+        period_trend = (
+            temp.groupby(pd.Grouper(key="summary_period", freq="ME"))["predicted_failure_likelihood_linear"]
+            .mean()
+            .dropna()
+        )
+        if len(period_trend) >= 3:
+            recent = float(period_trend.tail(min(3, len(period_trend))).mean())
+            previous = float(period_trend.iloc[:-min(3, len(period_trend))].tail(min(3, max(len(period_trend) - 1, 1))).mean()) if len(period_trend) > 3 else float(period_trend.iloc[:-1].mean())
+            delta = recent - previous
+            if delta > 0.05:
+                trend_text = "near-term risk is building"
+            elif delta < -0.05:
+                trend_text = "near-term risk is easing"
+            trend_source = candidate
+            break
 
-    gap_txt = ""
-    if pd.notna(actual_rate) and pd.notna(predicted_rate):
-        gap_pp = (predicted_rate - actual_rate) * 100
-        gap_direction = "higher" if gap_pp >= 0 else "lower"
-        gap_txt = f" The modelled risk is {abs(gap_pp):.1f} points {gap_direction} than observed outcomes."
+    driver = metrics.get("feature_used", "forecast discipline")
+    driver_reason, _ = get_driver_description(str(driver))
 
-    spend_txt = ""
-    if "Forecast_Spend" in programme_view.columns:
-        spend_series = pd.Series(pd.to_numeric(programme_view["Forecast_Spend"], errors="coerce"), index=programme_view.index)
-        spend_total = float(spend_series.fillna(0).sum())
-        spend_txt = f" Total filtered forecast spend is GBP {spend_total:,.0f}."
+    risk_sentence = f"The main watch-outs are {driver_reason.lower()} and general delivery discipline."
+    if active_risks:
+        lead_risks = [name for name, _ in active_risks[:2]]
+        joined_risks = " and ".join(lead_risks) if len(lead_risks) == 2 else lead_risks[0]
+        risk_sentence = f"The biggest upcoming risks are {joined_risks}."
+        top_indicators = active_risks[0][1].get("indicators", [])[:2]
+        if top_indicators:
+            risk_sentence += f" Early warning signals already point to {' and '.join(indicator.lower() for indicator in top_indicators)}."
 
-    next_period_txt = ""
-    if pd.notna(next_month_forecast) or pd.notna(next_month_failure_prob):
-        forecast_str = "N/A" if pd.isna(next_month_forecast) else f"GBP {next_month_forecast:,.0f}"
-        risk_str = "N/A" if pd.isna(next_month_failure_prob) else f"{next_month_failure_prob:.0%} ({risk_label})"
-        next_period_txt = f" For the latest period, forecasted spend is {forecast_str} with projected failure risk at {risk_str}."
+    budget_detail = ""
+    if budget_flags:
+        budget_detail = f" This is mainly because {budget_flags[0]}"
+        if len(budget_flags) > 1:
+            budget_detail += f", while {budget_flags[1]}"
+        budget_detail += "."
 
-    driver = metrics.get("feature_used", "key forecast driver")
-    actual_txt = "N/A" if pd.isna(actual_rate) else f"{actual_rate:.0%}"
-    pred_txt = "N/A" if pd.isna(predicted_rate) else f"{predicted_rate:.0%}"
+    next_period_sentence = ""
+    if pd.notna(next_month_failure_prob):
+        if next_month_failure_prob >= 0.55:
+            next_period_sentence = " The next reporting window already looks like a potential pressure point."
+        elif next_month_failure_prob >= 0.35:
+            next_period_sentence = " The next reporting window should be watched closely for slippage."
+
+    source_sentence = ""
+    if trend_source:
+        source_sentence = f" This outlook is based on the recent trend in {trend_source.replace('_', ' ').lower()}."
+
     return (
-        f"AI summary: observed failure is {actual_txt} versus modelled likelihood of {pred_txt}.{gap_txt}"
-        f" The strongest influencing factor remains {driver}.{next_period_txt}{spend_txt}"
+        f"Overall, the programme looks {overview_state}: {completion_phrase}. "
+        f"Budget confidence is {budget_confidence} rather than fully secure.{budget_detail} "
+        f"{risk_sentence} At portfolio level, {trend_text}.{next_period_sentence}"
+        f"{source_sentence}"
+    ).strip()
+
+
+def _mean_numeric_from_df(df: pd.DataFrame, column: str) -> float:
+    if column not in df.columns:
+        return float("nan")
+    series = pd.Series(pd.to_numeric(df[column], errors="coerce"), index=df.index)
+    return float(series.mean()) if series.notna().any() else float("nan")
+
+
+def _sum_numeric_from_df(df: pd.DataFrame, column: str) -> float:
+    if column not in df.columns:
+        return float("nan")
+    series = pd.Series(pd.to_numeric(df[column], errors="coerce"), index=df.index)
+    return float(series.sum()) if series.notna().any() else float("nan")
+
+
+def _describe_probability_trend(df: pd.DataFrame, value_col: str = "predicted_failure_likelihood_linear") -> tuple[str, str | None]:
+    if value_col not in df.columns or df.empty:
+        return "risk is broadly stable", None
+
+    time_candidates = [
+        ("Forecast_Period", lambda s: pd.to_datetime(s.astype(str) + "-01", errors="coerce")),
+        ("Forecast_Period_End_Date", lambda s: pd.to_datetime(s, errors="coerce")),
+        ("Forecast_Version_Date", lambda s: pd.to_datetime(s, errors="coerce")),
+    ]
+    for candidate, converter in time_candidates:
+        if candidate not in df.columns:
+            continue
+        temp = df.copy()
+        temp["summary_period"] = converter(temp[candidate])
+        temp[value_col] = pd.to_numeric(temp[value_col], errors="coerce")
+        temp = temp.dropna(subset=["summary_period", value_col])
+        if temp.empty:
+            continue
+        period_trend = (
+            temp.groupby(pd.Grouper(key="summary_period", freq="ME"))[value_col]
+            .mean()
+            .dropna()
+        )
+        if len(period_trend) < 2:
+            continue
+        lookback = min(3, len(period_trend))
+        recent = float(period_trend.tail(lookback).mean())
+        previous_slice = period_trend.iloc[:-lookback] if len(period_trend) > lookback else period_trend.iloc[:-1]
+        if previous_slice.empty:
+            previous = float(period_trend.iloc[:-1].mean()) if len(period_trend) > 1 else recent
+        else:
+            previous = float(previous_slice.tail(min(3, len(previous_slice))).mean())
+        delta = recent - previous
+        if delta > 0.05:
+            return "risk is building across upcoming periods", candidate
+        if delta < -0.05:
+            return "risk is easing compared with the earlier reporting cycle", candidate
+        return "risk is broadly stable", candidate
+
+    return "risk is broadly stable", None
+
+
+def build_persona_summary_card(summary_text: str, accent: str = "#c7d2fe", background: str = "#eef2ff") -> html.Div:
+    return html.Div(
+        [
+            html.H4("AI Summary", style={"margin": "0 0 8px 0"}),
+            html.P(summary_text, style={"margin": 0, "lineHeight": "1.45"}),
+        ],
+        style={
+            "backgroundColor": background,
+            "border": f"1px solid {accent}",
+            "borderRadius": "10px",
+            "padding": "14px",
+            "marginBottom": "14px",
+        },
+    )
+
+
+def build_commercial_manager_summary(
+    supplier_analysis_view: pd.DataFrame,
+    contract_summary: pd.DataFrame,
+    profile_summary: pd.DataFrame,
+    commodity_summary: pd.DataFrame,
+    supplier_watchlist: pd.DataFrame,
+    risk_alerts: dict,
+) -> str:
+    if supplier_analysis_view.empty:
+        return "There is not enough filtered supplier information to describe the current commercial position."
+
+    predicted_rate = _mean_numeric_from_df(supplier_analysis_view, "predicted_failure_likelihood_linear")
+    best_contract = contract_summary.sort_values("avg_failed_proposal_probability", ascending=True).iloc[0]["category"] if not contract_summary.empty else None
+    riskiest_profile = profile_summary.sort_values("avg_failed_proposal_probability", ascending=False).iloc[0]["category"] if not profile_summary.empty else None
+    riskiest_commodity = commodity_summary.sort_values("avg_failed_proposal_probability", ascending=False).iloc[0]["category"] if not commodity_summary.empty else None
+    watch_supplier = supplier_watchlist.sort_values("avg_failed_proposal_probability", ascending=False).iloc[0]["Supplier_ID"] if not supplier_watchlist.empty else None
+
+    status = "commercial exposure looks contained"
+    if pd.notna(predicted_rate) and predicted_rate >= 0.55:
+        status = "commercial exposure is elevated and supplier choices need tightening"
+    elif pd.notna(predicted_rate) and predicted_rate >= 0.35:
+        status = "commercial exposure is manageable but uneven across supplier choices"
+
+    risk_themes = []
+    if risk_alerts.get("supplier_delay_risk", {}).get("status") in {"Red", "Amber"}:
+        risk_themes.append("supplier reliability is the main near-term concern")
+    if risk_alerts.get("cost_volatility", {}).get("status") in {"Red", "Amber"}:
+        risk_themes.append("commercial volatility is still feeding through into forecast risk")
+    if not risk_themes:
+        risk_themes.append("no single commercial lever is flashing red, but weaker categories still need active monitoring")
+
+    option_text = ""
+    if best_contract is not None:
+        option_text = f" The data suggests {best_contract} is currently the most resilient contract structure"
+        if riskiest_profile is not None:
+            option_text += f", while {riskiest_profile} suppliers need tighter commercial oversight"
+        option_text += "."
+
+    hotspot_text = ""
+    if watch_supplier is not None or riskiest_commodity is not None:
+        parts = []
+        if watch_supplier is not None:
+            parts.append(f"supplier {watch_supplier}")
+        if riskiest_commodity is not None:
+            parts.append(f"{riskiest_commodity} demand")
+        hotspot_text = f" The biggest commercial hotspots are {' and '.join(parts)}."
+
+    return (
+        f"Overall, {status}. {risk_themes[0].capitalize()}.{option_text}{hotspot_text} "
+        f"This means procurement and contracting effort should be focused on the categories where terms, supplier profile and material mix are most likely to move the risk position."
+    ).strip()
+
+
+def build_cfo_summary(cfo_view: pd.DataFrame) -> str:
+    if cfo_view.empty:
+        return "There is not enough portfolio information to provide a finance-level outlook."
+
+    forecast_total = _sum_numeric_from_df(cfo_view, "Forecast_Spend")
+    actual_total = _sum_numeric_from_df(cfo_view, "Actual_Spend")
+    predicted_rate = _mean_numeric_from_df(cfo_view, "predicted_failure_likelihood_linear")
+    expected_at_risk_spend = float("nan")
+    concentration_text = ""
+
+    if {"Forecast_Spend", "predicted_failure_likelihood_linear", "Programme_ID"}.issubset(cfo_view.columns):
+        finance_df = cfo_view.copy()
+        finance_df["Forecast_Spend"] = pd.to_numeric(finance_df["Forecast_Spend"], errors="coerce")
+        finance_df["predicted_failure_likelihood_linear"] = pd.to_numeric(finance_df["predicted_failure_likelihood_linear"], errors="coerce")
+        finance_df = finance_df.dropna(subset=["Forecast_Spend", "predicted_failure_likelihood_linear"])
+        if not finance_df.empty:
+            finance_df["expected_at_risk_spend"] = (
+                finance_df["Forecast_Spend"] * finance_df["predicted_failure_likelihood_linear"]
+            )
+            expected_at_risk_spend = float(finance_df["expected_at_risk_spend"].sum())
+            programme_risk = (
+                finance_df.groupby("Programme_ID", dropna=False)["expected_at_risk_spend"]
+                .sum()
+                .sort_values(ascending=False)
+            )
+            top_programmes = programme_risk.head(3).index.astype(str).tolist()
+            if top_programmes:
+                concentration_text = f" Risk is concentrated in {', '.join(top_programmes)}."
+
+    budget_state = "portfolio affordability looks broadly intact"
+    if pd.notna(predicted_rate) and predicted_rate >= 0.55:
+        budget_state = "portfolio affordability is under clear pressure"
+    elif pd.notna(predicted_rate) and predicted_rate >= 0.35:
+        budget_state = "portfolio affordability is still manageable, but headroom is narrowing"
+
+    exposure_text = ""
+    if pd.notna(expected_at_risk_spend):
+        exposure_text = f" The current risk-adjusted spend exposure is about GBP {expected_at_risk_spend:,.0f}"
+        if pd.notna(forecast_total) and forecast_total > 0:
+            exposure_text += f", equivalent to roughly {expected_at_risk_spend / forecast_total:.0%} of forecasted portfolio value"
+        exposure_text += "."
+
+    delivery_gap_text = ""
+    if pd.notna(forecast_total) and pd.notna(actual_total) and forecast_total > 0:
+        gap = (forecast_total - actual_total) / forecast_total
+        if gap > 0.15:
+            delivery_gap_text = " Actual delivery remains behind the forecast curve, which reduces confidence that the current financial plan will land cleanly."
+
+    return (
+        f"Overall, {budget_state}.{exposure_text}{concentration_text}{delivery_gap_text} "
+        f"From a finance perspective, the immediate question is not only whether the programme can finish within budget, but whether the current risk concentration leaves enough headroom if any of the largest exposures deteriorate further."
+    ).strip()
+
+
+def build_project_controls_summary(
+    programme_view: pd.DataFrame,
+    risk_alerts: dict,
+    top_risk_drivers: list[dict[str, str]],
+) -> str:
+    if programme_view.empty:
+        return "There is not enough operational data to describe current control effectiveness."
+
+    trend_text, trend_source = _describe_probability_trend(programme_view)
+    stability_score = _mean_numeric_from_df(programme_view, "Forecast_Stability_Score")
+    high_risk_share = float("nan")
+    if "predicted_failure_likelihood_linear" in programme_view.columns:
+        risk_series = pd.Series(pd.to_numeric(programme_view["predicted_failure_likelihood_linear"], errors="coerce"), index=programme_view.index).dropna()
+        if not risk_series.empty:
+            high_risk_share = float((risk_series >= 0.5).mean())
+
+    hotspot_text = ""
+    if {"Supplier_ID", "Region", "predicted_failure_likelihood_linear"}.issubset(programme_view.columns):
+        hotspot_df = programme_view.copy()
+        hotspot_df["predicted_failure_likelihood_linear"] = pd.to_numeric(hotspot_df["predicted_failure_likelihood_linear"], errors="coerce")
+        hotspot_df = hotspot_df.dropna(subset=["predicted_failure_likelihood_linear"])
+        if not hotspot_df.empty:
+            top_hotspot = (
+                hotspot_df.groupby(["Supplier_ID", "Region"], dropna=False)["predicted_failure_likelihood_linear"]
+                .mean()
+                .sort_values(ascending=False)
+                .head(1)
+            )
+            if not top_hotspot.empty:
+                supplier_id, region = top_hotspot.index[0]
+                hotspot_text = f" The main operational hotspot is supplier {supplier_id} in {region}."
+
+    control_state = "control performance looks steady"
+    if pd.notna(stability_score) and stability_score < 0.45:
+        control_state = "control performance is under strain because the forecast is still being reworked too often"
+    elif pd.notna(high_risk_share) and high_risk_share >= 0.35:
+        control_state = "control performance is mixed, with too much of the portfolio still sitting in elevated risk territory"
+
+    driver_text = ""
+    if top_risk_drivers:
+        first_driver = top_risk_drivers[0]
+        driver_text = f" The control story is being driven mainly by {first_driver['reason'].lower()}."
+
+    alert_text = ""
+    red_alerts = [
+        name.replace("_", " ")
+        for name, value in risk_alerts.items()
+        if value.get("status") == "Red"
+    ]
+    if red_alerts:
+        alert_text = f" Immediate intervention is needed around {' and '.join(red_alerts)}."
+
+    source_text = f" This view is anchored on the trend in {trend_source.replace('_', ' ').lower()}." if trend_source else ""
+
+    return (
+        f"Overall, {control_state}; {trend_text}.{driver_text}{alert_text}{hotspot_text}{source_text} "
+        f"For operations and controls teams, the priority is to reduce avoidable forecast churn and act early where supplier or delivery signals are starting to drift."
     ).strip()
 
 
@@ -1582,18 +1939,10 @@ def build_graphs(
         next_month_failure_prob=next_month_failure_prob,
         risk_label=risk_label,
     )
-    programme_director_summary_card = html.Div(
-        [
-            html.H4("AI Summary", style={"margin": "0 0 8px 0"}),
-            html.P(programme_director_summary_text, style={"margin": 0, "lineHeight": "1.45"}),
-        ],
-        style={
-            "backgroundColor": "#eef2ff",
-            "border": "1px solid #c7d2fe",
-            "borderRadius": "10px",
-            "padding": "14px",
-            "marginBottom": "14px",
-        },
+    programme_director_summary_card = build_persona_summary_card(
+        programme_director_summary_text,
+        accent="#c7d2fe",
+        background="#eef2ff",
     )
 
     rec_rows = get_llm_recommendations(top_factors, target_col, avg_risk, metrics)
@@ -1897,6 +2246,27 @@ def build_graphs(
         style={"display": "grid", "gridTemplateColumns": "repeat(3, minmax(200px, 1fr))", "gap": "15px", "marginBottom": "20px"}
     )
 
+    commercial_manager_summary_text = build_commercial_manager_summary(
+        supplier_analysis_view=supplier_analysis_view,
+        contract_summary=contract_summary,
+        profile_summary=profile_summary,
+        commodity_summary=commodity_summary,
+        supplier_watchlist=supplier_watchlist,
+        risk_alerts=risk_alerts,
+    )
+    commercial_manager_summary_card = build_persona_summary_card(
+        commercial_manager_summary_text,
+        accent="#bfdbfe",
+        background="#eff6ff",
+    )
+
+    cfo_summary_text = build_cfo_summary(cfo_view)
+    cfo_summary_card = build_persona_summary_card(
+        cfo_summary_text,
+        accent="#c7d2fe",
+        background="#f8fafc",
+    )
+
     programme_director_blocks: list[Component] = [
         programme_director_summary_card,
         html.H4("KPI Cards"),
@@ -1975,6 +2345,7 @@ def build_graphs(
             f"This tab uses scored outcomes for {supplier_scope} to show how supplier choices, material categories and commercial terms shift failed proposal probability.",
             style={"marginBottom": "12px", "color": "#4b5563"},
         ),
+        commercial_manager_summary_card,
     ]
     if supplier_cards:
         commercial_manager_blocks.append(
@@ -2057,6 +2428,7 @@ def build_graphs(
             "Portfolio-level risk exposure and funding confidence, with focus on expected at-risk spend and where intervention releases investment headroom.",
             style={"marginBottom": "12px", "color": "#4b5563"},
         ),
+        cfo_summary_card,
     ]
     if cfo_programme_fig is not None:
         cfo_blocks.append(html.Div(dcc.Graph(figure=cfo_programme_fig), style={"marginBottom": "14px"}))
@@ -2073,6 +2445,16 @@ def build_graphs(
         }
         for i in range(min(5, len(top_factors)))
     ]
+    project_controls_summary_text = build_project_controls_summary(
+        programme_view=programme_view,
+        risk_alerts=risk_alerts,
+        top_risk_drivers=risk_alerts_data,
+    )
+    project_controls_summary_card = build_persona_summary_card(
+        project_controls_summary_text,
+        accent="#bae6fd",
+        background="#f0f9ff",
+    )
     
     project_controls_blocks: list[Component] = [
         html.H4("Project Controls Lead View"),
@@ -2080,6 +2462,7 @@ def build_graphs(
             "Control-focused diagnostics to understand behaviour causing forecast fade and where data/process discipline should be tightened.",
             style={"marginBottom": "12px", "color": "#4b5563"},
         ),
+        project_controls_summary_card,
     ]
     if operations_risk_trend_fig is not None:
         project_controls_blocks.append(
